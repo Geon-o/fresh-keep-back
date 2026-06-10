@@ -52,7 +52,7 @@ public class FridgeController {
 
     @GetMapping("/{fridgeId}/layouts")
     public ResponseEntity<FridgeLayoutResponse> getFridgeLayout(
-            @PathVariable Long fridgeId,
+            @PathVariable("fridgeId") Long fridgeId,
             @AuthenticationPrincipal Object principal) {
 
         if (!(principal instanceof Long userId)) {
