@@ -73,17 +73,21 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         filterChain.doFilter(request, response);
     }
 
-    private void ensureDeveloperUserExists(Long userId, String email, String name) {
-        if (!userRepository.existsById(userId)) {
-            log.info("Auto-creating developer test user with ID: {}", userId);
-            User devUser = User.builder()
-                    .id(userId)
-                    .email(email)
-                    .name(name != null ? name : "개발자 테스트 유저")
-                    .provider("developer")
-                    .providerId("mock_dev_id")
-                    .build();
-            userRepository.save(devUser);
+    private synchronized void ensureDeveloperUserExists(Long userId, String email, String name) {
+        try {
+            if (!userRepository.existsById(userId)) {
+                log.info("Auto-creating developer test user with ID: {}", userId);
+                User devUser = User.builder()
+                        .id(userId)
+                        .email(email)
+                        .name(name != null ? name : "개발자 테스트 유저")
+                        .provider("developer")
+                        .providerId("mock_dev_id")
+                        .build();
+                userRepository.saveAndFlush(devUser);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to auto-create developer user (likely created by concurrent request): {}", e.getMessage());
         }
     }
 
