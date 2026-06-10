@@ -13,9 +13,19 @@ import com.example.fresh_keep.domain.fridge.repository.FridgeMemberRepository;
 import com.example.fresh_keep.domain.fridge.repository.FridgeRepository;
 import com.example.fresh_keep.domain.user.entity.User;
 import com.example.fresh_keep.domain.user.repository.UserRepository;
+import com.example.fresh_keep.domain.fridge.dto.CompartmentDetailResponse;
+import com.example.fresh_keep.domain.fridge.dto.FridgeLayoutResponse;
+import com.example.fresh_keep.domain.ingredient.dto.IngredientDetailResponse;
+import com.example.fresh_keep.domain.ingredient.entity.Ingredient;
+import com.example.fresh_keep.domain.ingredient.repository.IngredientRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -29,6 +39,7 @@ public class FridgeService {
     private final FridgeMemberRepository fridgeMemberRepository;
     private final CompartmentRepository compartmentRepository;
     private final UserRepository userRepository;
+    private final IngredientRepository ingredientRepository;
 
     @Transactional
     public FridgeResponse createFridge(CreateFridgeRequest request, Long userId) {
@@ -59,6 +70,70 @@ public class FridgeService {
                 .name(fridge.getName())
                 .type(fridge.getType())
                 .role(MemberRole.OWNER)
+                .build();
+    }
+
+    public List<FridgeResponse> getFridges(Long userId) {
+        List<FridgeMember> members = fridgeMemberRepository.findByUserId(userId);
+        return members.stream()
+                .map(m -> FridgeResponse.builder()
+                        .id(m.getFridge().getId())
+                        .name(m.getFridge().getName())
+                        .type(m.getFridge().getType())
+                        .role(m.getRole())
+                        .build())
+                .collect(Collectors.toList());
+    }
+
+    public FridgeLayoutResponse getFridgeLayout(Long fridgeId, Long userId) {
+        // 1. 권한 검증
+        if (!fridgeMemberRepository.existsByFridgeIdAndUserId(fridgeId, userId)) {
+            throw new IllegalArgumentException("해당 냉장고에 대한 접근 권한이 없습니다.");
+        }
+
+        // 2. 냉장고 및 구획 조회
+        Fridge fridge = fridgeRepository.findById(fridgeId)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 냉장고입니다."));
+        List<Compartment> compartments = compartmentRepository.findByFridgeIdOrderBySequenceOrderAsc(fridgeId);
+
+        // 3. 식재료 일괄 조회 및 구획별 그룹화
+        List<Ingredient> ingredients = ingredientRepository.findByCompartmentFridgeId(fridgeId);
+        Map<Long, List<Ingredient>> ingredientsByCompartment = ingredients.stream()
+                .collect(Collectors.groupingBy(ing -> ing.getCompartment().getId()));
+
+        LocalDate now = LocalDate.now();
+
+        // 4. 구획별 상세 DTO 매핑
+        List<CompartmentDetailResponse> compartmentResponses = compartments.stream()
+                .map(comp -> {
+                    List<Ingredient> compIngredients = ingredientsByCompartment.getOrDefault(comp.getId(), new ArrayList<>());
+                    List<IngredientDetailResponse> ingredientResponses = compIngredients.stream()
+                            .map(ing -> IngredientDetailResponse.builder()
+                                    .id(ing.getId())
+                                    .name(ing.getName())
+                                    .quantity(ing.getQuantity())
+                                    .unit(ing.getUnit())
+                                    .expirationDate(ing.getExpirationDate())
+                                    .dday(ChronoUnit.DAYS.between(now, ing.getExpirationDate()))
+                                    .memo(ing.getMemo())
+                                    .build())
+                            .collect(Collectors.toList());
+
+                    return CompartmentDetailResponse.builder()
+                            .id(comp.getId())
+                            .name(comp.getName())
+                            .storageType(comp.getStorageType())
+                            .sequenceOrder(comp.getSequenceOrder())
+                            .ingredients(ingredientResponses)
+                            .build();
+                })
+                .collect(Collectors.toList());
+
+        return FridgeLayoutResponse.builder()
+                .fridgeId(fridge.getId())
+                .fridgeName(fridge.getName())
+                .type(fridge.getType())
+                .compartments(compartmentResponses)
                 .build();
     }
 
