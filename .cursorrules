@@ -28,7 +28,7 @@ These are the absolute, non-negotiable behavioral directives extracted from the 
   - *Meaning*: Strict traceability. If a code change cannot be directly justified by the immediate task, do not write it.
 
 ## 3. GitHub Push Skill / Hook (깃허브 푸시 스킬/훅)
-*Whenever the user requests to push to GitHub (e.g., "깃허브에 push 해줘", "push 해줘"), you must follow this workflow:*
+*You MUST ONLY run the `git push` command when the user explicitly instructs you using phrases like "push해줘", "push 해줘", "깃허브에 올려줘", or "깃에 올려줘". For any other general commands (like "진행해", "완료해줘"), DO NOT push. When authorized, follow this workflow:*
 
 - **Commit Message Format**:
   - The commit message must follow the Conventional Commits format: `<type>: <description>`
