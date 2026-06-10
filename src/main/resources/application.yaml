@@ -21,7 +21,6 @@ spring:
             redirect-uri: "{baseUrl}/login/oauth2/code/kakao"
             scope:
               - profile_nickname
-              - account_email
             client-name: Kakao
           naver:
             client-id: ${NAVER_CLIENT_ID}
@@ -51,6 +50,7 @@ jwt:
 
 server:
   port: 8086
+  forward-headers-strategy: framework
 ---
 # Local Development (using H2)
 spring:
@@ -64,7 +64,7 @@ spring:
     password: ${DB_PASSWORD}
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: create
     show-sql: true
     properties:
       hibernate:

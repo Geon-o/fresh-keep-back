@@ -31,7 +31,7 @@ public class SecurityConfig {
     private final com.example.fresh_keep.global.security.oauth.HttpCookieOAuth2AuthorizationRequestRepository httpCookieOAuth2AuthorizationRequestRepository;
 
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain filterChain(HttpSecurity http, org.springframework.security.oauth2.client.registration.ClientRegistrationRepository clientRegistrationRepository) throws Exception {
         http
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(AbstractHttpConfigurer::disable) // Stateless JWT environment
@@ -45,13 +45,59 @@ public class SecurityConfig {
                 )
                 .oauth2Login(oauth2 -> oauth2
                         .authorizationEndpoint(authorization -> authorization
-                                .authorizationRequestRepository(httpCookieOAuth2AuthorizationRequestRepository))
+                                .authorizationRequestRepository(httpCookieOAuth2AuthorizationRequestRepository)
+                                .authorizationRequestResolver(customAuthorizationRequestResolver(clientRegistrationRepository)))
                         .userInfoEndpoint(userInfo -> userInfo.userService(customOAuth2UserService))
                         .successHandler(oAuth2SuccessHandler)
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
+    }
+
+    private org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestResolver customAuthorizationRequestResolver(
+            org.springframework.security.oauth2.client.registration.ClientRegistrationRepository clientRegistrationRepository) {
+        
+        org.springframework.security.oauth2.client.web.DefaultOAuth2AuthorizationRequestResolver defaultResolver = 
+                new org.springframework.security.oauth2.client.web.DefaultOAuth2AuthorizationRequestResolver(
+                        clientRegistrationRepository, "/oauth2/authorization");
+        
+        return new org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestResolver() {
+            @Override
+            public org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest resolve(jakarta.servlet.http.HttpServletRequest request) {
+                org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest authRequest = defaultResolver.resolve(request);
+                return customize(authRequest, request);
+            }
+
+            @Override
+            public org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest resolve(jakarta.servlet.http.HttpServletRequest request, String clientRegistrationId) {
+                org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest authRequest = defaultResolver.resolve(request, clientRegistrationId);
+                return customize(authRequest, clientRegistrationId);
+            }
+
+            private org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest customize(
+                    org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest authRequest, jakarta.servlet.http.HttpServletRequest request) {
+                if (authRequest == null) return null;
+                String requestUri = request.getRequestURI();
+                String clientRegistrationId = requestUri.substring(requestUri.lastIndexOf('/') + 1);
+                return customize(authRequest, clientRegistrationId);
+            }
+
+            private org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest customize(
+                    org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest authRequest, String clientRegistrationId) {
+                if (authRequest == null) return null;
+                
+                if ("google".equalsIgnoreCase(clientRegistrationId)) {
+                    java.util.Map<String, Object> additionalParameters = new java.util.HashMap<>(authRequest.getAdditionalParameters());
+                    additionalParameters.put("prompt", "select_account");
+                    return org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest.from(authRequest)
+                            .additionalParameters(additionalParameters)
+                            .build();
+                }
+                
+                return authRequest;
+            }
+        };
     }
 
     @Bean
@@ -61,7 +107,8 @@ public class SecurityConfig {
         configuration.setAllowedOriginPatterns(Arrays.asList(
                 "http://localhost:[*]",
                 "http://127.0.0.1:[*]",
-                "http://192.168.*.*:[*]"
+                "http://192.168.*.*:[*]",
+                "https://*.trycloudflare.com"
         ));
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(Collections.singletonList("*"));
