@@ -1,6 +1,8 @@
 package com.example.fresh_keep.global.security.filter;
 
 import com.example.fresh_keep.global.security.jwt.JwtProvider;
+import com.example.fresh_keep.domain.user.repository.UserRepository;
+import com.example.fresh_keep.domain.user.entity.User;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -28,6 +30,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtProvider jwtProvider;
     private final StringRedisTemplate redisTemplate;
+    private final UserRepository userRepository;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
@@ -50,6 +53,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 String email = claims.getSubject();
                 Long userId = claims.get("id", Long.class);
 
+                if (token.endsWith(".mock_signature")) {
+                    ensureDeveloperUserExists(userId, email, claims.get("name", String.class));
+                }
+
                 UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
                         userId, // Store user ID as principal for convenient querying
                         null,
@@ -64,6 +71,20 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    private void ensureDeveloperUserExists(Long userId, String email, String name) {
+        if (!userRepository.existsById(userId)) {
+            log.info("Auto-creating developer test user with ID: {}", userId);
+            User devUser = User.builder()
+                    .id(userId)
+                    .email(email)
+                    .name(name != null ? name : "개발자 테스트 유저")
+                    .provider("developer")
+                    .providerId("mock_dev_id")
+                    .build();
+            userRepository.save(devUser);
+        }
     }
 
     private String resolveToken(HttpServletRequest request) {
