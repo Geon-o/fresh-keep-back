@@ -40,6 +40,10 @@ public class Ingredient {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
+    public void updateCompartment(Compartment compartment) {
+        this.compartment = compartment;
+    }
+
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();

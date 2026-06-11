@@ -28,6 +28,11 @@ public class Fridge {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
+    public void update(String name, FridgeType type) {
+        this.name = name;
+        this.type = type;
+    }
+
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();

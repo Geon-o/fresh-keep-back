@@ -15,6 +15,7 @@ import com.example.fresh_keep.domain.user.entity.User;
 import com.example.fresh_keep.domain.user.repository.UserRepository;
 import com.example.fresh_keep.domain.fridge.dto.CompartmentDetailResponse;
 import com.example.fresh_keep.domain.fridge.dto.FridgeLayoutResponse;
+import com.example.fresh_keep.domain.fridge.dto.UpdateFridgeRequest;
 import com.example.fresh_keep.domain.ingredient.dto.IngredientDetailResponse;
 import com.example.fresh_keep.domain.ingredient.entity.Ingredient;
 import com.example.fresh_keep.domain.ingredient.repository.IngredientRepository;
@@ -135,6 +136,79 @@ public class FridgeService {
                 .type(fridge.getType())
                 .compartments(compartmentResponses)
                 .build();
+    }
+
+    @Transactional
+    public FridgeResponse updateFridge(Long fridgeId, UpdateFridgeRequest request, Long userId) {
+        // 1. 권한 검증
+        if (!fridgeMemberRepository.existsByFridgeIdAndUserId(fridgeId, userId)) {
+            throw new IllegalArgumentException("해당 냉장고에 대한 수정 권한이 없습니다.");
+        }
+
+        // 2. 냉장고 조회
+        Fridge fridge = fridgeRepository.findById(fridgeId)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 냉장고입니다."));
+
+        FridgeType oldType = fridge.getType();
+        FridgeType newType = request.getType();
+
+        // 3. 냉장고 이름 및 타입 변경
+        fridge.update(request.getName(), newType);
+
+        // 4. 타입이 변경되었다면 구획 마이그레이션 실행
+        if (oldType != newType) {
+            List<Compartment> oldCompartments = compartmentRepository.findByFridgeIdOrderBySequenceOrderAsc(fridgeId);
+            List<Ingredient> ingredients = ingredientRepository.findByCompartmentFridgeId(fridgeId);
+
+            createDefaultCompartments(fridge);
+
+            List<Compartment> newCompartments = compartmentRepository.findByFridgeIdOrderBySequenceOrderAsc(fridgeId);
+
+            for (Ingredient ingredient : ingredients) {
+                StorageType oldStorageType = ingredient.getCompartment().getStorageType();
+                Compartment matchedNewCompartment = newCompartments.stream()
+                        .filter(comp -> comp.getStorageType() == oldStorageType)
+                        .findFirst()
+                        .orElse(newCompartments.isEmpty() ? null : newCompartments.get(0));
+
+                if (matchedNewCompartment != null) {
+                    ingredient.updateCompartment(matchedNewCompartment);
+                }
+            }
+            ingredientRepository.saveAll(ingredients);
+            compartmentRepository.deleteAll(oldCompartments);
+        }
+
+        MemberRole role = fridgeMemberRepository.findByUserId(userId).stream()
+                .filter(m -> m.getFridge().getId().equals(fridgeId))
+                .map(FridgeMember::getRole)
+                .findFirst()
+                .orElse(MemberRole.OWNER);
+
+        return FridgeResponse.builder()
+                .id(fridge.getId())
+                .name(fridge.getName())
+                .type(fridge.getType())
+                .role(role)
+                .build();
+    }
+
+    @Transactional
+    public void deleteFridge(Long fridgeId, Long userId) {
+        if (!fridgeMemberRepository.existsByFridgeIdAndUserId(fridgeId, userId)) {
+            throw new IllegalArgumentException("해당 냉장고에 대한 삭제 권한이 없습니다.");
+        }
+
+        List<Ingredient> ingredients = ingredientRepository.findByCompartmentFridgeId(fridgeId);
+        ingredientRepository.deleteAll(ingredients);
+
+        List<Compartment> compartments = compartmentRepository.findByFridgeIdOrderBySequenceOrderAsc(fridgeId);
+        compartmentRepository.deleteAll(compartments);
+
+        List<FridgeMember> members = fridgeMemberRepository.findByFridgeId(fridgeId);
+        fridgeMemberRepository.deleteAll(members);
+
+        fridgeRepository.deleteById(fridgeId);
     }
 
     private void createDefaultCompartments(Fridge fridge) {

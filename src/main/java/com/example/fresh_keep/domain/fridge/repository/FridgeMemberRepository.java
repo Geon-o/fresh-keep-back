@@ -9,5 +9,6 @@ import java.util.List;
 @Repository
 public interface FridgeMemberRepository extends JpaRepository<FridgeMember, Long> {
     List<FridgeMember> findByUserId(Long userId);
+    List<FridgeMember> findByFridgeId(Long fridgeId);
     boolean existsByFridgeIdAndUserId(Long fridgeId, Long userId);
 }
