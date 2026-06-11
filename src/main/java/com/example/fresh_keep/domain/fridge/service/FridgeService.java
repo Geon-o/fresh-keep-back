@@ -46,7 +46,7 @@ public class FridgeService {
     private final IngredientRepository ingredientRepository;
 
     @Transactional
-    @CacheEvict(value = "fridges", key = "#userId")
+    @CacheEvict(value = "fridges", key = "#p1")
     public FridgeResponse createFridge(CreateFridgeRequest request, Long userId) {
         // 1. 유저 조회
         User user = userRepository.findById(userId)
@@ -78,7 +78,7 @@ public class FridgeService {
                 .build();
     }
 
-    @Cacheable(value = "fridges", key = "#userId")
+    @Cacheable(value = "fridges", key = "#p0")
     public List<FridgeResponse> getFridges(Long userId) {
         List<FridgeMember> members = fridgeMemberRepository.findByUserId(userId);
         return members.stream()
@@ -91,7 +91,7 @@ public class FridgeService {
                 .collect(Collectors.toList());
     }
 
-    @Cacheable(value = "fridgeLayout", key = "#fridgeId")
+    @Cacheable(value = "fridgeLayout", key = "#p0")
     public FridgeLayoutResponse getFridgeLayout(Long fridgeId, Long userId) {
         // 1. 권한 검증
         if (!fridgeMemberRepository.existsByFridgeIdAndUserId(fridgeId, userId)) {
@@ -146,8 +146,8 @@ public class FridgeService {
 
     @Transactional
     @Caching(evict = {
-        @CacheEvict(value = "fridges", key = "#userId"),
-        @CacheEvict(value = "fridgeLayout", key = "#fridgeId")
+        @CacheEvict(value = "fridges", key = "#p2"),
+        @CacheEvict(value = "fridgeLayout", key = "#p0")
     })
     public FridgeResponse updateFridge(Long fridgeId, UpdateFridgeRequest request, Long userId) {
         // 1. 권한 검증
@@ -205,8 +205,8 @@ public class FridgeService {
 
     @Transactional
     @Caching(evict = {
-        @CacheEvict(value = "fridges", key = "#userId"),
-        @CacheEvict(value = "fridgeLayout", key = "#fridgeId")
+        @CacheEvict(value = "fridges", key = "#p1"),
+        @CacheEvict(value = "fridgeLayout", key = "#p0")
     })
     public void deleteFridge(Long fridgeId, Long userId) {
         if (!fridgeMemberRepository.existsByFridgeIdAndUserId(fridgeId, userId)) {
