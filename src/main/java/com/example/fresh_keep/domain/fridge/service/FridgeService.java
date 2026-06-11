@@ -20,6 +20,9 @@ import com.example.fresh_keep.domain.ingredient.dto.IngredientDetailResponse;
 import com.example.fresh_keep.domain.ingredient.entity.Ingredient;
 import com.example.fresh_keep.domain.ingredient.repository.IngredientRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -43,6 +46,7 @@ public class FridgeService {
     private final IngredientRepository ingredientRepository;
 
     @Transactional
+    @CacheEvict(value = "fridges", key = "#userId")
     public FridgeResponse createFridge(CreateFridgeRequest request, Long userId) {
         // 1. 유저 조회
         User user = userRepository.findById(userId)
@@ -74,6 +78,7 @@ public class FridgeService {
                 .build();
     }
 
+    @Cacheable(value = "fridges", key = "#userId")
     public List<FridgeResponse> getFridges(Long userId) {
         List<FridgeMember> members = fridgeMemberRepository.findByUserId(userId);
         return members.stream()
@@ -86,6 +91,7 @@ public class FridgeService {
                 .collect(Collectors.toList());
     }
 
+    @Cacheable(value = "fridgeLayout", key = "#fridgeId")
     public FridgeLayoutResponse getFridgeLayout(Long fridgeId, Long userId) {
         // 1. 권한 검증
         if (!fridgeMemberRepository.existsByFridgeIdAndUserId(fridgeId, userId)) {
@@ -139,6 +145,10 @@ public class FridgeService {
     }
 
     @Transactional
+    @Caching(evict = {
+        @CacheEvict(value = "fridges", key = "#userId"),
+        @CacheEvict(value = "fridgeLayout", key = "#fridgeId")
+    })
     public FridgeResponse updateFridge(Long fridgeId, UpdateFridgeRequest request, Long userId) {
         // 1. 권한 검증
         if (!fridgeMemberRepository.existsByFridgeIdAndUserId(fridgeId, userId)) {
@@ -194,6 +204,10 @@ public class FridgeService {
     }
 
     @Transactional
+    @Caching(evict = {
+        @CacheEvict(value = "fridges", key = "#userId"),
+        @CacheEvict(value = "fridgeLayout", key = "#fridgeId")
+    })
     public void deleteFridge(Long fridgeId, Long userId) {
         if (!fridgeMemberRepository.existsByFridgeIdAndUserId(fridgeId, userId)) {
             throw new IllegalArgumentException("해당 냉장고에 대한 삭제 권한이 없습니다.");
