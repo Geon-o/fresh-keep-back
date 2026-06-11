@@ -16,6 +16,7 @@ import com.example.fresh_keep.domain.user.repository.UserRepository;
 import com.example.fresh_keep.domain.fridge.dto.CompartmentDetailResponse;
 import com.example.fresh_keep.domain.fridge.dto.FridgeLayoutResponse;
 import com.example.fresh_keep.domain.fridge.dto.UpdateFridgeRequest;
+import com.example.fresh_keep.domain.fridge.dto.UpdateShelvesRequest;
 import com.example.fresh_keep.domain.ingredient.dto.IngredientDetailResponse;
 import com.example.fresh_keep.domain.ingredient.entity.Ingredient;
 import com.example.fresh_keep.domain.ingredient.repository.IngredientRepository;
@@ -131,6 +132,9 @@ public class FridgeService {
                             .name(comp.getName())
                             .storageType(comp.getStorageType())
                             .sequenceOrder(comp.getSequenceOrder())
+                            .insideShelves(comp.getInsideShelves())
+                            .doorShelves(comp.getDoorShelves())
+                            .hasDoorStorage(comp.getHasDoorStorage())
                             .ingredients(ingredientResponses)
                             .build();
                 })
@@ -223,6 +227,20 @@ public class FridgeService {
         fridgeMemberRepository.deleteAll(members);
 
         fridgeRepository.deleteById(fridgeId);
+    }
+
+    @Transactional
+    @CacheEvict(value = "fridgeLayout", key = "#p0")
+    public void updateCompartmentShelves(Long fridgeId, Long compartmentId, UpdateShelvesRequest request, Long userId) {
+        if (!fridgeMemberRepository.existsByFridgeIdAndUserId(fridgeId, userId)) {
+            throw new IllegalArgumentException("해당 냉장고에 대한 수정 권한이 없습니다.");
+        }
+        Compartment compartment = compartmentRepository.findById(compartmentId)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 구획입니다."));
+        if (!compartment.getFridge().getId().equals(fridgeId)) {
+            throw new IllegalArgumentException("올바르지 않은 구획 정보입니다.");
+        }
+        compartment.updateShelves(request.getInsideShelves(), request.getDoorShelves(), request.getHasDoorStorage());
     }
 
     private void createDefaultCompartments(Fridge fridge) {

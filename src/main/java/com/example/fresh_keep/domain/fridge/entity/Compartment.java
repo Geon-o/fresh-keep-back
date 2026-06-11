@@ -32,8 +32,26 @@ public class Compartment {
     @Column(name = "sequence_order", nullable = false)
     private Integer sequenceOrder;
 
+    @Column(name = "inside_shelves", columnDefinition = "TEXT")
+    @Builder.Default
+    private String insideShelves = "[{\"id\":\"shelf_1\",\"label\":\"선반 1단\"},{\"id\":\"shelf_2\",\"label\":\"선반 2단\"},{\"id\":\"shelf_3\",\"label\":\"선반 3단\"}]";
+
+    @Column(name = "door_shelves", columnDefinition = "TEXT")
+    @Builder.Default
+    private String doorShelves = "[{\"id\":\"pocket_1\",\"label\":\"선반 1단\"},{\"id\":\"pocket_2\",\"label\":\"선반 2단\"}]";
+
+    @Column(name = "has_door_storage", nullable = false)
+    @Builder.Default
+    private Boolean hasDoorStorage = true;
+
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+
+    public void updateShelves(String insideShelves, String doorShelves, Boolean hasDoorStorage) {
+        this.insideShelves = insideShelves;
+        this.doorShelves = doorShelves;
+        this.hasDoorStorage = hasDoorStorage;
+    }
 
     @PrePersist
     protected void onCreate() {

@@ -18,5 +18,8 @@ public class CompartmentDetailResponse {
     private String name;
     private StorageType storageType;
     private Integer sequenceOrder;
+    private String insideShelves;
+    private String doorShelves;
+    private Boolean hasDoorStorage;
     private List<IngredientDetailResponse> ingredients;
 }
