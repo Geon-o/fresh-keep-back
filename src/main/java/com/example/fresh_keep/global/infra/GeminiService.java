@@ -37,12 +37,6 @@ public class GeminiService {
             throw new IllegalStateException("Gemini API Key가 구성되지 않았습니다. 백엔드 .env 또는 환경 변수를 확인해 주세요.");
         }
 
-        // 디버깅: 메모리에 로드된 실제 API 키 앞 8자리 출력
-        if (apiKey.length() > 8) {
-            log.info("DEBUG: Gemini API Key in memory starts with: '{}...'", apiKey.substring(0, 8));
-        } else {
-            log.warn("DEBUG: Gemini API Key in memory is too short! length: {}", apiKey.length());
-        }
 
         String url = String.format("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", model, apiKey);
 
