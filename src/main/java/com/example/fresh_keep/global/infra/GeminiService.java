@@ -44,7 +44,7 @@ public class GeminiService {
             log.warn("DEBUG: Gemini API Key in memory is too short! length: {}", apiKey.length());
         }
 
-        String url = String.format("https://generativelanguage.googleapis.com/v1/models/%s:generateContent?key=%s", model, apiKey);
+        String url = String.format("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", model, apiKey);
 
         // 프롬프트 작성 (JSON 형식 엄격 준수하도록 프롬프팅)
         String prompt = String.format(
