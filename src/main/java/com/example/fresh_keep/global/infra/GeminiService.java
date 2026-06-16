@@ -52,27 +52,29 @@ public class GeminiService {
         );
 
         try {
-            // 요청 바디 생성
-            Map<String, Object> requestBody = new HashMap<>();
+            // Jackson ObjectNode를 직접 사용하여 카멜 케이스 필드명 강제 유지 (Spring MessageConverter의 임의 변환 방지)
+            com.fasterxml.jackson.databind.node.ObjectNode requestBody = objectMapper.createObjectNode();
             
-            Map<String, Object> part = new HashMap<>();
-            part.put("text", prompt);
+            com.fasterxml.jackson.databind.node.ArrayNode contentsArray = requestBody.putArray("contents");
+            com.fasterxml.jackson.databind.node.ObjectNode contentObj = objectMapper.createObjectNode();
+            com.fasterxml.jackson.databind.node.ArrayNode partsArray = contentObj.putArray("parts");
+            com.fasterxml.jackson.databind.node.ObjectNode partObj = objectMapper.createObjectNode();
+            partObj.put("text", prompt);
+            partsArray.add(partObj);
+            contentsArray.add(contentObj);
 
-            Map<String, Object> content = new HashMap<>();
-            content.put("parts", List.of(part));
+            com.fasterxml.jackson.databind.node.ObjectNode generationConfigNode = objectMapper.createObjectNode();
+            generationConfigNode.put("responseMimeType", "application/json");
+            requestBody.set("generationConfig", generationConfigNode);
 
-            requestBody.put("contents", List.of(content));
-
-            // JSON Mime Type 출력 강제화 설정
-            Map<String, Object> generationConfig = new HashMap<>();
-            generationConfig.put("response_mime_type", "application/json");
-            requestBody.put("generation_config", generationConfig);
+            // JSON 문자열로 변환
+            String jsonPayload = objectMapper.writeValueAsString(requestBody);
 
             // 헤더 설정
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
 
-            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+            HttpEntity<String> entity = new HttpEntity<>(jsonPayload, headers);
 
             // API 호출
             ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
