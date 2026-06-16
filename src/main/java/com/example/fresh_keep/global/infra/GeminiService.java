@@ -18,13 +18,12 @@ import java.util.Map;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class GeminiService {
 
     @Value("${gemini.api-key:}")
     private String apiKey;
 
-    private final ObjectMapper objectMapper;
+    private final ObjectMapper objectMapper = new ObjectMapper();
     private final RestTemplate restTemplate = new RestTemplate();
 
     private static final String GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=";
