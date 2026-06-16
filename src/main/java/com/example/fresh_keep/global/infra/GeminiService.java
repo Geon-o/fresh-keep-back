@@ -63,10 +63,6 @@ public class GeminiService {
             partsArray.add(partObj);
             contentsArray.add(contentObj);
 
-            com.fasterxml.jackson.databind.node.ObjectNode generationConfigNode = objectMapper.createObjectNode();
-            generationConfigNode.put("responseMimeType", "application/json");
-            requestBody.set("generationConfig", generationConfigNode);
-
             // JSON 문자열로 변환
             String jsonPayload = objectMapper.writeValueAsString(requestBody);
 
