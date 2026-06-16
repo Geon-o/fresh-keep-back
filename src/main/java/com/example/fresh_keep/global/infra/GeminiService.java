@@ -26,7 +26,7 @@ public class GeminiService {
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final RestTemplate restTemplate = new RestTemplate();
 
-    private static final String GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=";
+    private static final String GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash-latest:generateContent";
 
     public String generateStorageGuide(String ingredientName) {
         if (apiKey == null || apiKey.trim().isEmpty()) {
@@ -34,7 +34,7 @@ public class GeminiService {
             throw new IllegalStateException("Gemini API Key가 구성되지 않았습니다. 백엔드 .env 또는 환경 변수를 확인해 주세요.");
         }
 
-        String url = GEMINI_API_URL + apiKey;
+        String url = GEMINI_API_URL;
 
         // 프롬프트 작성 (JSON 형식 엄격 준수하도록 프롬프팅)
         String prompt = String.format(
@@ -69,6 +69,7 @@ public class GeminiService {
             // 헤더 설정
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.set("x-goog-api-key", apiKey); // AQ 키 호환을 위해 헤더 인증 명시
 
             HttpEntity<String> entity = new HttpEntity<>(jsonPayload, headers);
 
