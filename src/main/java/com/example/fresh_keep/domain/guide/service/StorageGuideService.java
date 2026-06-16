@@ -79,7 +79,51 @@ public class StorageGuideService {
                     .collect(Collectors.toList());
         }
 
-        // 3. 정확히 일치하는 단일 캐시가 존재하지 않는 경우 실시간 AI 가이드 생성 진입
+        // 2.5. Levenshtein Distance 알고리즘을 활용해 미세한 오타 보정 및 기존 캐시 재활용 처리
+        List<StorageGuide> allGuides = storageGuideRepository.findAll();
+        StorageGuide bestMatch = null;
+        int minDistance = Integer.MAX_VALUE;
+
+        for (StorageGuide guide : allGuides) {
+            int distance = getLevenshteinDistance(sanitizedQuery, guide.getName());
+            
+            // 한 자모 오타 판단 조건 임계치 설정
+            // - 1글자 검색어: 보정 안함 (예: "배" vs "뱀"은 1글자 차이지만 별개 단어)
+            // - 2~3글자 검색어: 1글자 오타까지만 인정 (예: "딸기" vs "떨기" 거리 1)
+            // - 4글자 이상 검색어: 2글자 오타까지 허용 (예: "브로콜리" vs "보로콜리" 거리 1)
+            int threshold = 0;
+            if (sanitizedQuery.length() >= 4) {
+                threshold = 2;
+            } else if (sanitizedQuery.length() >= 2) {
+                threshold = 1;
+            }
+
+            if (distance <= threshold && distance < minDistance) {
+                minDistance = distance;
+                bestMatch = guide;
+            }
+        }
+
+        if (bestMatch != null) {
+            log.info("Storage Guide Typo Corrected: '{}' mapped to existing cache '{}' (edit distance: {})", 
+                    sanitizedQuery, bestMatch.getName(), minDistance);
+            
+            // 기존 캐시 보완(Lazy Load): 비디오 ID가 유실되어 있는 경우에 한함
+            if (bestMatch.getYoutubeVideoId() == null || bestMatch.getYoutubeVideoId().trim().isEmpty()) {
+                try {
+                    YoutubeService.YoutubeVideoInfo videoInfo = youtubeService.searchVideo(bestMatch.getYoutubeQuery());
+                    if (videoInfo != null) {
+                        bestMatch.updateYoutubeVideoInfo(videoInfo.getVideoId(), videoInfo.getTitle(), videoInfo.getChannelName());
+                        storageGuideRepository.save(bestMatch);
+                    }
+                } catch (Exception e) {
+                    log.error("Failed to lazy load YouTube video for typo-corrected guide '{}'", bestMatch.getName(), e);
+                }
+            }
+            return List.of(StorageGuideResponse.from(bestMatch));
+        }
+
+        // 3. 정확히 일치하거나 오타 매핑되는 캐시가 존재하지 않는 경우 실시간 AI 가이드 생성 진입
         log.info("Storage Guide Cache Miss for query: '{}'. Requesting Gemini AI...", sanitizedQuery);
         
         // 4. Rate Limiting 검증
@@ -195,5 +239,39 @@ public class StorageGuideService {
                 timestamps.add(System.currentTimeMillis());
             }
         }
+    }
+
+    /**
+     * 두 문자열 간의 Levenshtein Distance (편집 거리)를 계산하여 차이나는 문자 수를 반환합니다.
+     */
+    private int getLevenshteinDistance(String s1, String s2) {
+        if (s1 == null || s2 == null) return Integer.MAX_VALUE;
+        
+        // 공백 제거 및 소문자 정규화 처리
+        String cleanS1 = s1.trim().replaceAll("\\s", "").toLowerCase();
+        String cleanS2 = s2.trim().replaceAll("\\s", "").toLowerCase();
+        
+        int len1 = cleanS1.length();
+        int len2 = cleanS2.length();
+        
+        int[][] dp = new int[len1 + 1][len2 + 1];
+        
+        for (int i = 0; i <= len1; i++) {
+            dp[i][0] = i;
+        }
+        for (int j = 0; j <= len2; j++) {
+            dp[0][j] = j;
+        }
+        
+        for (int i = 1; i <= len1; i++) {
+            for (int j = 1; j <= len2; j++) {
+                int cost = (cleanS1.charAt(i - 1) == cleanS2.charAt(j - 1)) ? 0 : 1;
+                dp[i][j] = Math.min(
+                    Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1),
+                    dp[i - 1][j - 1] + cost
+                );
+            }
+        }
+        return dp[len1][len2];
     }
 }
