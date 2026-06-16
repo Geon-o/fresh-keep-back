@@ -44,6 +44,14 @@ public class Ingredient {
         this.compartment = compartment;
     }
 
+    public void update(String name, Double quantity, String unit, LocalDate expirationDate, String memo) {
+        this.name = name;
+        this.quantity = quantity;
+        this.unit = unit;
+        this.expirationDate = expirationDate;
+        this.memo = memo;
+    }
+
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
