@@ -35,16 +35,35 @@ public class StorageGuide {
     @Column(nullable = false)
     private String youtubeQuery;
 
+    @Column(name = "youtube_video_id", nullable = true)
+    private String youtubeVideoId;
+
+    @Column(name = "youtube_video_title", nullable = true)
+    private String youtubeVideoTitle;
+
+    @Column(name = "youtube_channel_name", nullable = true)
+    private String youtubeChannelName;
+
     @Column(nullable = false)
     private LocalDateTime createdAt;
 
     @Builder
-    public StorageGuide(String name, String emoji, String category, String tip, String youtubeQuery) {
+    public StorageGuide(String name, String emoji, String category, String tip, String youtubeQuery, 
+                        String youtubeVideoId, String youtubeVideoTitle, String youtubeChannelName) {
         this.name = name;
         this.emoji = emoji;
         this.category = category;
         this.tip = tip;
         this.youtubeQuery = youtubeQuery;
+        this.youtubeVideoId = youtubeVideoId;
+        this.youtubeVideoTitle = youtubeVideoTitle;
+        this.youtubeChannelName = youtubeChannelName;
         this.createdAt = LocalDateTime.now();
+    }
+
+    public void updateYoutubeVideoInfo(String youtubeVideoId, String youtubeVideoTitle, String youtubeChannelName) {
+        this.youtubeVideoId = youtubeVideoId;
+        this.youtubeVideoTitle = youtubeVideoTitle;
+        this.youtubeChannelName = youtubeChannelName;
     }
 }

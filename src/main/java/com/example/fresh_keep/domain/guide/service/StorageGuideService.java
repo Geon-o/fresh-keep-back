@@ -4,6 +4,7 @@ import com.example.fresh_keep.domain.guide.dto.StorageGuideResponse;
 import com.example.fresh_keep.domain.guide.entity.StorageGuide;
 import com.example.fresh_keep.domain.guide.repository.StorageGuideRepository;
 import com.example.fresh_keep.global.infra.GeminiService;
+import com.example.fresh_keep.global.infra.YoutubeService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -22,11 +23,13 @@ public class StorageGuideService {
 
     private final StorageGuideRepository storageGuideRepository;
     private final GeminiService geminiService;
+    private final YoutubeService youtubeService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public StorageGuideService(StorageGuideRepository storageGuideRepository, GeminiService geminiService) {
+    public StorageGuideService(StorageGuideRepository storageGuideRepository, GeminiService geminiService, YoutubeService youtubeService) {
         this.storageGuideRepository = storageGuideRepository;
         this.geminiService = geminiService;
+        this.youtubeService = youtubeService;
     }
 
     // 인메모리 Rate Limiting을 위한 저장소 (유저 ID별 신규 생성 API 호출 시각 기록)
@@ -54,6 +57,23 @@ public class StorageGuideService {
         
         if (!dbResults.isEmpty()) {
             log.info("Storage Guide Cache Hit for query: '{}'. Found {} items.", sanitizedQuery, dbResults.size());
+            
+            // 캐시 보완(Lazy Load): 비디오 ID가 없는 가이드는 실시간으로 업데이트
+            for (StorageGuide guide : dbResults) {
+                if (guide.getYoutubeVideoId() == null || guide.getYoutubeVideoId().trim().isEmpty()) {
+                    try {
+                        YoutubeService.YoutubeVideoInfo videoInfo = youtubeService.searchVideo(guide.getYoutubeQuery());
+                        if (videoInfo != null) {
+                            guide.updateYoutubeVideoInfo(videoInfo.getVideoId(), videoInfo.getTitle(), videoInfo.getChannelName());
+                            storageGuideRepository.save(guide);
+                            log.info("Lazy loaded YouTube video for cached guide '{}': {}", guide.getName(), videoInfo.getVideoId());
+                        }
+                    } catch (Exception e) {
+                        log.error("Failed to lazy load YouTube video for guide '{}'", guide.getName(), e);
+                    }
+                }
+            }
+
             return dbResults.stream()
                     .map(StorageGuideResponse::from)
                     .collect(Collectors.toList());
@@ -100,7 +120,31 @@ public class StorageGuideService {
             // DB 중복 방지 (동시성 요청에 의한 중복 키 에러 방어)
             Optional<StorageGuide> existing = storageGuideRepository.findByName(name);
             if (existing.isPresent()) {
-                return existing.get();
+                StorageGuide guide = existing.get();
+                // 이미 존재하지만 유튜브 비디오 ID가 없는 경우 유튜브 정보만 보완
+                if (guide.getYoutubeVideoId() == null || guide.getYoutubeVideoId().trim().isEmpty()) {
+                    YoutubeService.YoutubeVideoInfo videoInfo = youtubeService.searchVideo(guide.getYoutubeQuery());
+                    if (videoInfo != null) {
+                        guide.updateYoutubeVideoInfo(videoInfo.getVideoId(), videoInfo.getTitle(), videoInfo.getChannelName());
+                        return storageGuideRepository.save(guide);
+                    }
+                }
+                return guide;
+            }
+
+            // 유튜브 비디오 정보 실시간 검색 및 바인딩
+            String youtubeVideoId = null;
+            String youtubeVideoTitle = null;
+            String youtubeChannelName = null;
+            try {
+                YoutubeService.YoutubeVideoInfo videoInfo = youtubeService.searchVideo(youtubeQuery);
+                if (videoInfo != null) {
+                    youtubeVideoId = videoInfo.getVideoId();
+                    youtubeVideoTitle = videoInfo.getTitle();
+                    youtubeChannelName = videoInfo.getChannelName();
+                }
+            } catch (Exception e) {
+                log.error("Failed to fetch YouTube video info for new guide '{}'", name, e);
             }
 
             StorageGuide newGuide = StorageGuide.builder()
@@ -109,6 +153,9 @@ public class StorageGuideService {
                     .category(category)
                     .tip(tip)
                     .youtubeQuery(youtubeQuery)
+                    .youtubeVideoId(youtubeVideoId)
+                    .youtubeVideoTitle(youtubeVideoTitle)
+                    .youtubeChannelName(youtubeChannelName)
                     .build();
 
             return storageGuideRepository.save(newGuide);

@@ -51,6 +51,9 @@ jwt:
 gemini:
   api-key: ${GEMINI_API_KEY:}
 
+youtube:
+  api-key: ${YOUTUBE_API_KEY:}
+
 server:
   port: 8086
   forward-headers-strategy: framework
