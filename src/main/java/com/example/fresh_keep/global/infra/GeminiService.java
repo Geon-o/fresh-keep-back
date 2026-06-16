@@ -23,10 +23,13 @@ public class GeminiService {
     @Value("${gemini.api-key:}")
     private String apiKey;
 
+    @Value("${gemini.model:gemini-1.5-flash}")
+    private String model;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final RestTemplate restTemplate = new RestTemplate();
 
-    private static final String GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=";
+
 
     public String generateStorageGuide(String ingredientName) {
         if (apiKey == null || apiKey.trim().isEmpty()) {
@@ -41,7 +44,7 @@ public class GeminiService {
             log.warn("DEBUG: Gemini API Key in memory is too short! length: {}", apiKey.length());
         }
 
-        String url = GEMINI_API_URL + apiKey;
+        String url = String.format("https://generativelanguage.googleapis.com/v1/models/%s:generateContent?key=%s", model, apiKey);
 
         // 프롬프트 작성 (JSON 형식 엄격 준수하도록 프롬프팅)
         String prompt = String.format(
