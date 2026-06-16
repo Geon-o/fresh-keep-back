@@ -43,10 +43,18 @@ public class YoutubeService {
             return null;
         }
 
+        // 쿼리 안전화 및 보정: 검색어에 "보관"이나 "손질"이 포함되어 있지 않으면 " 보관법"을 뒤에 붙여 관련 영상만 유도
+        String searchQuery = (query != null) ? query.trim() : "";
+        if (searchQuery.isEmpty()) {
+            searchQuery = "식재료 보관법";
+        } else if (!searchQuery.contains("보관") && !searchQuery.contains("손질")) {
+            searchQuery = searchQuery + " 보관법";
+        }
+
         try {
             String url = UriComponentsBuilder.fromUriString(YOUTUBE_SEARCH_URL)
                     .queryParam("part", "snippet")
-                    .queryParam("q", query)
+                    .queryParam("q", searchQuery)
                     .queryParam("type", "video")
                     .queryParam("order", "viewCount") // 조회수 높은 순 정렬
                     .queryParam("maxResults", 1)
@@ -54,7 +62,7 @@ public class YoutubeService {
                     .build()
                     .toUriString();
 
-            log.info("Requesting YouTube Data API for query: '{}'", query);
+            log.info("Requesting YouTube Data API for query: '{}' (original query: '{}')", searchQuery, query);
             ResponseEntity<String> response = restTemplate.getForEntity(url, String.class);
 
             if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
