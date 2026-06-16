@@ -52,8 +52,7 @@ gemini:
   api-key: ${GEMINI_API_KEY:}
   model: ${GEMINI_MODEL:gemini-flash-latest}
 
-youtube:
-  api-key: ${YOUTUBE_API_KEY:}
+
 
 server:
   port: 8086
