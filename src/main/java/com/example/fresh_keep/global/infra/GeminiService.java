@@ -65,8 +65,8 @@ public class GeminiService {
 
             // JSON Mime Type 출력 강제화 설정
             Map<String, Object> generationConfig = new HashMap<>();
-            generationConfig.put("responseMimeType", "application/json");
-            requestBody.put("generationConfig", generationConfig);
+            generationConfig.put("response_mime_type", "application/json");
+            requestBody.put("generation_config", generationConfig);
 
             // 헤더 설정
             HttpHeaders headers = new HttpHeaders();
