@@ -24,6 +24,7 @@ public class StorageGuideController {
     @GetMapping("/search")
     public ResponseEntity<?> searchGuides(
             @RequestParam("query") String query,
+            @RequestParam(value = "autoGenerate", defaultValue = "true") boolean autoGenerate,
             @AuthenticationPrincipal Object principal) {
 
         if (!(principal instanceof Long userId)) {
@@ -31,7 +32,7 @@ public class StorageGuideController {
         }
 
         try {
-            List<StorageGuideResponse> results = storageGuideService.searchGuides(query, userId);
+            List<StorageGuideResponse> results = storageGuideService.searchGuides(query, autoGenerate, userId);
             return ResponseEntity.ok(results);
         } catch (IllegalArgumentException | IllegalStateException e) {
             // 비즈니스 예외 (글자수 초과, Rate Limiting 제한 도달 등)는 400 Bad Request로 처리하고 메시지를 전달

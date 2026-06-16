@@ -41,7 +41,7 @@ public class StorageGuideService {
      * 식재료 보관 가이드 검색 (하이브리드 캐싱)
      */
     @Transactional
-    public List<StorageGuideResponse> searchGuides(String query, Long userId) {
+    public List<StorageGuideResponse> searchGuides(String query, boolean autoGenerate, Long userId) {
         // 1. 입력값 1차 검증 및 Sanitization
         if (query == null || query.trim().isEmpty()) {
             return Collections.emptyList();
@@ -121,6 +121,12 @@ public class StorageGuideService {
                 }
             }
             return List.of(StorageGuideResponse.from(bestMatch));
+        }
+
+        // 실시간 AI 자동 생성을 원하지 않는 경우(타이핑 중 실시간 매칭 등) AI 호출 없이 빈 결과 즉시 반환
+        if (!autoGenerate) {
+            log.info("Storage Guide Cache Miss for query: '{}'. autoGenerate is false, returning empty list.", sanitizedQuery);
+            return Collections.emptyList();
         }
 
         // 3. 정확히 일치하거나 오타 매핑되는 캐시가 존재하지 않는 경우 실시간 AI 가이드 생성 진입
