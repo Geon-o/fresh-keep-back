@@ -14,8 +14,8 @@ These are the absolute, non-negotiable behavioral directives extracted from the 
   - *Meaning*: Always verify. Write tests, check logs, demonstrate correctness. Ask yourself continually: "Would a staff engineer approve this?"
 - **"After ANY correction from the user: update `tasks/lessons.md` with the pattern."**
   - *Meaning*: Do not repeat mistakes. Learn ruthlessly, document the lesson, and review it.
-- **"에러나 이슈 보고 시, 코드 수정 전 원인 설명 필수"**
-  - *Meaning*: 에러 로그나 버그 제보가 들어왔을 때, 즉시 코드를 수정하는 툴을 호출하지 마십시오. 먼저 무엇 때문에 해당 에러가 발생했는지(원인 분석)를 사용자에게 명확히 설명하고, 어떻게 수정할지 계획을 밝힌 뒤 수정을 진행해야 합니다.
+- **"Explain the root cause BEFORE fixing any reported errors or issues"**
+  - *Meaning*: When given an error log or a bug report, DO NOT immediately call code modification tools. Always explain the exact root cause of the error to the user first, present your proposed fix plan, and then proceed with the modification.
 
 ## 2. Surgical Precision & Anti-Hallucination (Micro)
 *These rules govern your exact keystrokes and code generation.*
