@@ -48,6 +48,9 @@ jwt:
   access-token-expiration: 900000
   refresh-token-expiration: 604800000
 
+gemini:
+  api-key: ${GEMINI_API_KEY:}
+
 server:
   port: 8086
   forward-headers-strategy: framework
