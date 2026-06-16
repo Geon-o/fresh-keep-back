@@ -18,12 +18,16 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class StorageGuideService {
 
     private final StorageGuideRepository storageGuideRepository;
     private final GeminiService geminiService;
-    private final ObjectMapper objectMapper;
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    public StorageGuideService(StorageGuideRepository storageGuideRepository, GeminiService geminiService) {
+        this.storageGuideRepository = storageGuideRepository;
+        this.geminiService = geminiService;
+    }
 
     // 인메모리 Rate Limiting을 위한 저장소 (유저 ID별 신규 생성 API 호출 시각 기록)
     private final Map<Long, List<Long>> creationTimestamps = new ConcurrentHashMap<>();
