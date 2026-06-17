@@ -76,6 +76,20 @@ public class IngredientService {
         String newMemo = request.getMemo() != null ? request.getMemo() : ingredient.getMemo();
 
         ingredient.update(newName, newQuantity, newUnit, newExpirationDate, newMemo);
+
+        // 구획 이동 처리
+        if (request.getCompartmentId() != null) {
+            Compartment newCompartment = compartmentRepository.findById(request.getCompartmentId())
+                    .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 보관 구획입니다."));
+            
+            // 이동할 구획이 동일한 냉장고 내의 구획인지 검증
+            if (!newCompartment.getFridge().getId().equals(fridgeId)) {
+                throw new IllegalArgumentException("동일한 냉장고 내의 구획으로만 이동할 수 있습니다.");
+            }
+            
+            ingredient.updateCompartment(newCompartment);
+        }
+
         ingredientRepository.save(ingredient);
 
         // 4. 캐시 무효화

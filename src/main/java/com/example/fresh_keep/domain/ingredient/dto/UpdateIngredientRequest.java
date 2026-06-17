@@ -10,6 +10,7 @@ import java.time.LocalDate;
 @Setter
 @NoArgsConstructor
 public class UpdateIngredientRequest {
+    private Long compartmentId;
     private String name;
     private Double quantity;
     private String unit;
