@@ -28,6 +28,16 @@ public class StorageGuideService {
         this.geminiService = geminiService;
     }
 
+    /**
+     * 모든 저장된 보관 가이드 목록 조회 (캐시 목록)
+     */
+    @Transactional(readOnly = true)
+    public List<StorageGuideResponse> getAllGuides() {
+        return storageGuideRepository.findAll().stream()
+                .map(StorageGuideResponse::from)
+                .collect(Collectors.toList());
+    }
+
     // 인메모리 Rate Limiting을 위한 저장소 (유저 ID별 신규 생성 API 호출 시각 기록)
     private final Map<Long, List<Long>> creationTimestamps = new ConcurrentHashMap<>();
     private static final int MAX_CREATIONS_PER_MINUTE = 5;

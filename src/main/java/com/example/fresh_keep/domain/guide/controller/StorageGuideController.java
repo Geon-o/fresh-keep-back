@@ -42,4 +42,19 @@ public class StorageGuideController {
                     .body(Map.of("message", "보관법 조회 중 서버 오류가 발생했습니다. 잠시 후 다시 시도해 주세요."));
         }
     }
+
+    @GetMapping("/all")
+    public ResponseEntity<?> getAllGuides(@AuthenticationPrincipal Object principal) {
+        if (!(principal instanceof Long userId)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        try {
+            List<StorageGuideResponse> results = storageGuideService.getAllGuides();
+            return ResponseEntity.ok(results);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "보관법 목록 조회 중 서버 오류가 발생했습니다."));
+        }
+    }
 }
