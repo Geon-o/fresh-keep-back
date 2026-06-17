@@ -169,28 +169,18 @@ public class FridgeService {
         // 3. 냉장고 이름 및 타입 변경
         fridge.update(request.getName(), newType);
 
-        // 4. 타입이 변경되었다면 구획 마이그레이션 실행
+        // 4. 타입이 변경되었다면 기존 내용물(식재료) 및 구획 전부 제거 후 새 구획 생성
         if (oldType != newType) {
-            List<Compartment> oldCompartments = compartmentRepository.findByFridgeIdOrderBySequenceOrderAsc(fridgeId);
+            // 기존 식재료 전부 제거
             List<Ingredient> ingredients = ingredientRepository.findByCompartmentFridgeId(fridgeId);
+            ingredientRepository.deleteAll(ingredients);
 
-            createDefaultCompartments(fridge);
-
-            List<Compartment> newCompartments = compartmentRepository.findByFridgeIdOrderBySequenceOrderAsc(fridgeId);
-
-            for (Ingredient ingredient : ingredients) {
-                StorageType oldStorageType = ingredient.getCompartment().getStorageType();
-                Compartment matchedNewCompartment = newCompartments.stream()
-                        .filter(comp -> comp.getStorageType() == oldStorageType)
-                        .findFirst()
-                        .orElse(newCompartments.isEmpty() ? null : newCompartments.get(0));
-
-                if (matchedNewCompartment != null) {
-                    ingredient.updateCompartment(matchedNewCompartment);
-                }
-            }
-            ingredientRepository.saveAll(ingredients);
+            // 기존 구획 전부 제거
+            List<Compartment> oldCompartments = compartmentRepository.findByFridgeIdOrderBySequenceOrderAsc(fridgeId);
             compartmentRepository.deleteAll(oldCompartments);
+
+            // 새 타입에 따른 기본 구획 생성
+            createDefaultCompartments(fridge);
         }
 
         MemberRole role = fridgeMemberRepository.findByUserId(userId).stream()
