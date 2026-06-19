@@ -1,10 +1,14 @@
 package com.example.fresh_keep.domain.user.controller;
 
+import com.example.fresh_keep.domain.user.dto.IdTokenVerificationRequest;
 import com.example.fresh_keep.domain.user.dto.RefreshRequest;
 import com.example.fresh_keep.domain.user.entity.User;
 import com.example.fresh_keep.domain.user.repository.UserRepository;
 import com.example.fresh_keep.global.security.jwt.JwtProvider;
 import com.example.fresh_keep.global.security.jwt.dto.TokenResponse;
+import com.example.fresh_keep.global.security.oauth.OAuthTokenVerifier;
+import com.example.fresh_keep.global.security.oauth.OAuthTokenVerifierFactory;
+import com.example.fresh_keep.global.security.oauth.OAuthUserInfo;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -30,9 +34,63 @@ public class AuthController {
     private final JwtProvider jwtProvider;
     private final StringRedisTemplate redisTemplate;
     private final UserRepository userRepository;
+    private final OAuthTokenVerifierFactory tokenVerifierFactory;
 
     @Value("${jwt.refresh-token-expiration:604800000}")
     private long refreshTokenExpiration;
+
+    @PostMapping("/verify-token")
+    public ResponseEntity<?> verifyToken(
+            @RequestBody IdTokenVerificationRequest verifyRequest,
+            HttpServletRequest request,
+            HttpServletResponse response) {
+        
+        try {
+            String idToken = verifyRequest.getIdToken();
+            String provider = verifyRequest.getProvider();
+
+            if (idToken == null || idToken.isEmpty() || provider == null || provider.isEmpty()) {
+                return ResponseEntity.badRequest().body("Required parameters (idToken, provider) are missing.");
+            }
+
+            OAuthTokenVerifier verifier = tokenVerifierFactory.getVerifier(provider);
+            OAuthUserInfo userInfo = verifier.verify(idToken);
+
+            User user = userRepository.findByProviderAndProviderId(provider, userInfo.getProviderId())
+                    .orElseGet(() -> {
+                        log.info("New OAuth user signing up: provider={}, email={}", provider, userInfo.getEmail());
+                        User newUser = User.builder()
+                                .email(userInfo.getEmail())
+                                .name(userInfo.getName())
+                                .provider(provider)
+                                .providerId(userInfo.getProviderId())
+                                .build();
+                        return userRepository.save(newUser);
+                    });
+
+            String accessToken = jwtProvider.generateAccessToken(user.getId(), user.getEmail(), user.getName());
+            String refreshToken = jwtProvider.generateRefreshToken(user.getId(), user.getEmail());
+
+            String redisKey = "RT:" + user.getId();
+            String clientIp = getClientIp(request);
+            String userAgent = request.getHeader("User-Agent");
+            String redisValue = refreshToken + "|" + clientIp + "|" + (userAgent != null ? userAgent : "UNKNOWN");
+            redisTemplate.opsForValue().set(redisKey, redisValue, refreshTokenExpiration, TimeUnit.MILLISECONDS);
+
+            setAccessTokenCookie(response, accessToken);
+
+            log.info("Successfully authenticated user: {} via local JWT verification adapter.", user.getEmail());
+
+            return ResponseEntity.ok(TokenResponse.builder()
+                    .accessToken(accessToken)
+                    .refreshToken(refreshToken)
+                    .build());
+
+        } catch (Exception e) {
+            log.error("ID Token verification failed: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Unauthorized: " + e.getMessage());
+        }
+    }
 
     @PostMapping("/refresh")
     public ResponseEntity<?> refresh(
