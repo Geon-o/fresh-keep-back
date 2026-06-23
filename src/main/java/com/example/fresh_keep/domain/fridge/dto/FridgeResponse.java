@@ -16,4 +16,5 @@ public class FridgeResponse {
     private String name;
     private FridgeType type;
     private MemberRole role;
+    private String uuid;
 }

@@ -76,6 +76,7 @@ public class FridgeService {
                 .name(fridge.getName())
                 .type(fridge.getType())
                 .role(MemberRole.OWNER)
+                .uuid(fridge.getUuid())
                 .build();
     }
 
@@ -88,6 +89,7 @@ public class FridgeService {
                         .name(m.getFridge().getName())
                         .type(m.getFridge().getType())
                         .role(m.getRole())
+                        .uuid(m.getFridge().getUuid())
                         .build())
                 .collect(Collectors.toList());
     }
@@ -194,6 +196,7 @@ public class FridgeService {
                 .name(fridge.getName())
                 .type(fridge.getType())
                 .role(role)
+                .uuid(fridge.getUuid())
                 .build();
     }
 
@@ -289,5 +292,45 @@ public class FridgeService {
         }
 
         compartmentRepository.saveAll(compartments);
+    }
+
+    @Transactional
+    @CacheEvict(value = "fridges", key = "#p1")
+    public FridgeResponse shareFridge(String fridgeUuid, Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 유저입니다."));
+
+        Fridge fridge = fridgeRepository.findByUuid(fridgeUuid)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않거나 유효하지 않은 QR 코드의 냉장고입니다."));
+
+        List<FridgeMember> allMembers = fridgeMemberRepository.findByFridgeId(fridge.getId());
+        java.util.Optional<FridgeMember> existingMember = allMembers.stream()
+                .filter(m -> m.getUser().getId().equals(userId))
+                .findFirst();
+
+        if (existingMember.isPresent()) {
+            return FridgeResponse.builder()
+                    .id(fridge.getId())
+                    .name(fridge.getName())
+                    .type(fridge.getType())
+                    .role(existingMember.get().getRole())
+                    .uuid(fridge.getUuid())
+                    .build();
+        }
+
+        FridgeMember fridgeMember = FridgeMember.builder()
+                .user(user)
+                .fridge(fridge)
+                .role(MemberRole.MEMBER)
+                .build();
+        fridgeMemberRepository.save(fridgeMember);
+
+        return FridgeResponse.builder()
+                .id(fridge.getId())
+                .name(fridge.getName())
+                .type(fridge.getType())
+                .role(MemberRole.MEMBER)
+                .uuid(fridge.getUuid())
+                .build();
     }
 }

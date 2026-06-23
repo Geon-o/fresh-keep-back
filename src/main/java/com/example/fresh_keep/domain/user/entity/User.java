@@ -27,8 +27,22 @@ public class User {
 
     private String providerId; // ID from OAuth provider
 
+    @Column(unique = true)
+    private String deviceUuid;
+
+    @Column(unique = true)
+    private String backupKey;
+
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+
+    public void updateBackupKey(String backupKey) {
+        this.backupKey = backupKey;
+    }
+
+    public void updateDeviceUuid(String deviceUuid) {
+        this.deviceUuid = deviceUuid;
+    }
 
     @PrePersist
     protected void onCreate() {

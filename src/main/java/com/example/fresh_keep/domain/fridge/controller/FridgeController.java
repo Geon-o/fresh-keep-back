@@ -109,4 +109,30 @@ public class FridgeController {
         fridgeService.updateCompartmentShelves(fridgeId, compartmentId, request, userId);
         return ResponseEntity.ok().build();
     }
+
+    @PostMapping("/share")
+    public ResponseEntity<?> shareFridge(
+            @RequestBody ShareFridgeRequest request,
+            @AuthenticationPrincipal Object principal) {
+
+        if (!(principal instanceof Long userId)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        if (request.getFridgeUuid() == null || request.getFridgeUuid().trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(java.util.Map.of("message", "Fridge UUID is required."));
+        }
+
+        try {
+            FridgeResponse response = fridgeService.shareFridge(request.getFridgeUuid().trim(), userId);
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(java.util.Map.of("message", e.getMessage()));
+        }
+    }
+
+    @lombok.Data
+    public static class ShareFridgeRequest {
+        private String fridgeUuid;
+    }
 }

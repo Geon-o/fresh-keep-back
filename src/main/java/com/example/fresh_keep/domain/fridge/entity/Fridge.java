@@ -25,6 +25,9 @@ public class Fridge {
     @Column(nullable = false)
     private FridgeType type;
 
+    @Column(unique = true, nullable = false)
+    private String uuid;
+
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -37,6 +40,9 @@ public class Fridge {
     protected void onCreate() {
         createdAt = LocalDateTime.now();
         updatedAt = LocalDateTime.now();
+        if (uuid == null || uuid.trim().isEmpty()) {
+            uuid = java.util.UUID.randomUUID().toString();
+        }
     }
 
     @PreUpdate
