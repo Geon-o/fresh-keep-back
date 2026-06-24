@@ -1,38 +1,40 @@
 package com.example.fresh_keep.domain.user.controller;
-
+ 
 import com.example.fresh_keep.domain.user.entity.User;
 import com.example.fresh_keep.domain.user.repository.UserRepository;
 import com.example.fresh_keep.global.security.jwt.JwtProvider;
 import com.example.fresh_keep.global.security.jwt.dto.TokenResponse;
+import com.example.fresh_keep.global.util.SecurityUtil;
 import lombok.Builder;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
-
+ 
 import java.security.SecureRandom;
 import java.util.Map;
 import java.util.Optional;
-
+ 
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
 public class AnonymousAuthController {
-
+ 
     private final UserRepository userRepository;
     private final JwtProvider jwtProvider;
-
+ 
     @PostMapping("/anonymous")
     public ResponseEntity<?> authenticateAnonymous(@RequestBody DeviceRegisterRequest request) {
         if (request.getDeviceUuid() == null || request.getDeviceUuid().trim().isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("message", "Device UUID is required."));
         }
-
-        String deviceUuid = request.getDeviceUuid().trim();
-        Optional<User> existingUser = userRepository.findByDeviceUuid(deviceUuid);
+ 
+        String rawDeviceUuid = request.getDeviceUuid().trim();
+        String hashedDeviceUuid = SecurityUtil.encryptSHA256(rawDeviceUuid);
+        Optional<User> existingUser = userRepository.findByDeviceUuid(hashedDeviceUuid);
         User user;
-
+ 
         if (existingUser.isPresent()) {
             user = existingUser.get();
         } else {
@@ -40,17 +42,17 @@ public class AnonymousAuthController {
             String backupKey = generateUniqueBackupKey();
             user = User.builder()
                     .name("익명 사용자")
-                    .deviceUuid(deviceUuid)
+                    .deviceUuid(hashedDeviceUuid)
                     .backupKey(backupKey)
                     .provider("anonymous")
                     .build();
             userRepository.save(user);
         }
-
+ 
         String subject = user.getDeviceUuid() != null ? user.getDeviceUuid() + "@freshkeep.anonymous" : "anonymous_" + user.getId() + "@freshkeep.anonymous";
         String accessToken = jwtProvider.generateAccessToken(user.getId(), subject, user.getName());
         String refreshToken = jwtProvider.generateRefreshToken(user.getId(), subject);
-
+ 
         return ResponseEntity.ok(TokenResponse.builder()
                 .accessToken(accessToken)
                 .refreshToken(refreshToken)
@@ -85,7 +87,8 @@ public class AnonymousAuthController {
         }
 
         String backupKey = request.getBackupKey().trim();
-        String deviceUuid = request.getDeviceUuid().trim();
+        String rawDeviceUuid = request.getDeviceUuid().trim();
+        String hashedDeviceUuid = SecurityUtil.encryptSHA256(rawDeviceUuid);
 
         Optional<User> targetUserOpt = userRepository.findByBackupKey(backupKey);
         if (targetUserOpt.isEmpty()) {
@@ -93,8 +96,8 @@ public class AnonymousAuthController {
         }
 
         User user = targetUserOpt.get();
-        // Update device UUID to map this new device
-        user.updateDeviceUuid(deviceUuid);
+        // Update device UUID to map this new device (using hashed UUID for privacy)
+        user.updateDeviceUuid(hashedDeviceUuid);
         userRepository.save(user);
 
         String subject = user.getDeviceUuid() != null ? user.getDeviceUuid() + "@freshkeep.anonymous" : "anonymous_" + user.getId() + "@freshkeep.anonymous";
