@@ -34,19 +34,32 @@ public class AnonymousAuthController {
         String hashedDeviceUuid = SecurityUtil.encryptSHA256(rawDeviceUuid);
         Optional<User> existingUser = userRepository.findByDeviceUuid(hashedDeviceUuid);
         User user;
+        String plainBackupKey = null;
  
-        if (existingUser.isPresent()) {
-            user = existingUser.get();
-        } else {
-            // Create a new anonymous user
-            String backupKey = generateUniqueBackupKey();
-            user = User.builder()
-                    .name("익명 사용자")
-                    .deviceUuid(hashedDeviceUuid)
-                    .backupKey(backupKey)
-                    .provider("anonymous")
-                    .build();
-            userRepository.save(user);
+        try {
+            if (existingUser.isPresent()) {
+                user = existingUser.get();
+            } else {
+                // Create a new anonymous user
+                plainBackupKey = generateUniqueBackupKey();
+                String hashedBackupKey = SecurityUtil.encryptSHA256(plainBackupKey);
+                user = User.builder()
+                        .name("익명 사용자")
+                        .deviceUuid(hashedDeviceUuid)
+                        .backupKey(hashedBackupKey)
+                        .provider("anonymous")
+                        .build();
+                user = userRepository.save(user);
+            }
+        } catch (org.springframework.dao.DataIntegrityViolationException e) {
+            // 거의 동시에 여러 요청이 왔을 때, 이미 DB에 저장되어 있는 경우가 있으므로 다시 한 번 조회해 본다.
+            existingUser = userRepository.findByDeviceUuid(hashedDeviceUuid);
+            if (existingUser.isPresent()) {
+                user = existingUser.get();
+                plainBackupKey = null;
+            } else {
+                throw e;
+            }
         }
  
         String subject = user.getDeviceUuid() != null ? user.getDeviceUuid() + "@freshkeep.anonymous" : "anonymous_" + user.getId() + "@freshkeep.anonymous";
@@ -56,6 +69,7 @@ public class AnonymousAuthController {
         return ResponseEntity.ok(TokenResponse.builder()
                 .accessToken(accessToken)
                 .refreshToken(refreshToken)
+                .backupKey(plainBackupKey)
                 .build());
     }
 
@@ -69,7 +83,7 @@ public class AnonymousAuthController {
                 .map(user -> {
                     if (user.getBackupKey() == null) {
                         String newKey = generateUniqueBackupKey();
-                        user.updateBackupKey(newKey);
+                        user.updateBackupKey(SecurityUtil.encryptSHA256(newKey));
                         userRepository.save(user);
                     }
                     return ResponseEntity.ok(Map.of("backupKey", user.getBackupKey()));
@@ -86,11 +100,12 @@ public class AnonymousAuthController {
             return ResponseEntity.badRequest().body(Map.of("message", "Device UUID is required."));
         }
 
-        String backupKey = request.getBackupKey().trim();
+        String rawBackupKey = request.getBackupKey().trim();
+        String hashedBackupKey = SecurityUtil.encryptSHA256(rawBackupKey);
         String rawDeviceUuid = request.getDeviceUuid().trim();
         String hashedDeviceUuid = SecurityUtil.encryptSHA256(rawDeviceUuid);
 
-        Optional<User> targetUserOpt = userRepository.findByBackupKey(backupKey);
+        Optional<User> targetUserOpt = userRepository.findByBackupKey(hashedBackupKey);
         if (targetUserOpt.isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("message", "유효하지 않은 백업 키입니다."));
         }
@@ -107,6 +122,7 @@ public class AnonymousAuthController {
         return ResponseEntity.ok(TokenResponse.builder()
                 .accessToken(accessToken)
                 .refreshToken(refreshToken)
+                .backupKey(rawBackupKey)
                 .build());
     }
 
@@ -123,7 +139,7 @@ public class AnonymousAuthController {
                 if (i < 2) sb.append("-");
             }
             key = sb.toString();
-        } while (userRepository.findByBackupKey(key).isPresent());
+        } while (userRepository.findByBackupKey(SecurityUtil.encryptSHA256(key)).isPresent());
         return key;
     }
 
