@@ -111,6 +111,18 @@ public class AnonymousAuthController {
         }
 
         User user = targetUserOpt.get();
+
+        // 중복 가입 방지용 unique 제약조건(deviceUuid) 충돌을 회피하기 위해
+        // 동일한 deviceUuid를 이미 점유 중인 임시 사용자가 있다면 매핑을 먼저 끊어줍니다.
+        Optional<User> tempUserOpt = userRepository.findByDeviceUuid(hashedDeviceUuid);
+        if (tempUserOpt.isPresent()) {
+            User tempUser = tempUserOpt.get();
+            if (!tempUser.getId().equals(user.getId())) {
+                tempUser.updateDeviceUuid(null);
+                userRepository.save(tempUser);
+            }
+        }
+
         // Update device UUID to map this new device (using hashed UUID for privacy)
         user.updateDeviceUuid(hashedDeviceUuid);
         userRepository.save(user);
