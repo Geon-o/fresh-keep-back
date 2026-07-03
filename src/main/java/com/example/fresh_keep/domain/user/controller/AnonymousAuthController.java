@@ -51,7 +51,7 @@ public class AnonymousAuthController {
                 plainBackupKey = generateUniqueBackupKey();
                 String hashedBackupKey = SecurityUtil.encryptSHA256(plainBackupKey);
                 user = User.builder()
-                        .name("익명 사용자")
+                        .name(generateRandomNickname())
                         .deviceUuid(hashedDeviceUuid)
                         .backupKey(hashedBackupKey)
                         .provider("anonymous")
@@ -178,6 +178,25 @@ public class AnonymousAuthController {
             key = sb.toString();
         } while (userRepository.findByBackupKey(SecurityUtil.encryptSHA256(key)).isPresent());
         return key;
+    }
+
+    private String generateRandomNickname() {
+        String[] adjectives = {
+            "뽀송뽀송", "파릇파릇", "쫀득쫀득", "아삭아삭", "탱글탱글",
+            "새콤달콤", "고소한", "달콤한", "시원한", "말랑말랑",
+            "바삭바삭", "포근한", "싱싱한", "상큼한", "달달한",
+            "부드러운", "갓구운", "갓수확한", "촉촉한", "따끈따끈"
+        };
+        String[] nouns = {
+            "브라우니", "방울토마토", "아보카도", "브로콜리", "마카롱",
+            "푸딩", "젤리", "머핀", "샐러드", "샤베트",
+            "샌드위치", "바나나", "블루베리", "복숭아", "망고",
+            "멜론", "치즈케이크", "사과", "딸기", "체리"
+        };
+        SecureRandom random = new SecureRandom();
+        String adj = adjectives[random.nextInt(adjectives.length)];
+        String noun = nouns[random.nextInt(nouns.length)];
+        return adj + noun;
     }
 
     @Data
