@@ -44,6 +44,10 @@ public class User {
         this.deviceUuid = deviceUuid;
     }
 
+    public void updateName(String name) {
+        this.name = name;
+    }
+
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
