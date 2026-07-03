@@ -11,9 +11,6 @@ jwt:
   access-token-expiration: 900000
   refresh-token-expiration: 604800000
 
-gemini:
-  api-key: ${GEMINI_API_KEY:}
-  model: ${GEMINI_MODEL:gemini-flash-latest}
 
 
 
