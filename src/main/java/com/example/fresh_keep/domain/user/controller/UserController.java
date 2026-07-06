@@ -2,6 +2,15 @@ package com.example.fresh_keep.domain.user.controller;
 
 import com.example.fresh_keep.domain.user.dto.UserProfileResponse;
 import com.example.fresh_keep.domain.user.repository.UserRepository;
+import com.example.fresh_keep.domain.fridge.entity.Compartment;
+import com.example.fresh_keep.domain.fridge.entity.Fridge;
+import com.example.fresh_keep.domain.fridge.entity.FridgeMember;
+import com.example.fresh_keep.domain.fridge.enums.MemberRole;
+import com.example.fresh_keep.domain.fridge.repository.CompartmentRepository;
+import com.example.fresh_keep.domain.fridge.repository.FridgeMemberRepository;
+import com.example.fresh_keep.domain.fridge.repository.FridgeRepository;
+import com.example.fresh_keep.domain.ingredient.entity.Ingredient;
+import com.example.fresh_keep.domain.ingredient.repository.IngredientRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.Data;
 import org.springframework.http.ResponseEntity;
@@ -10,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import com.example.fresh_keep.domain.user.entity.User;
 import java.util.Map;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/users")
@@ -17,6 +27,10 @@ import java.util.Map;
 public class UserController {
 
     private final UserRepository userRepository;
+    private final FridgeMemberRepository fridgeMemberRepository;
+    private final FridgeRepository fridgeRepository;
+    private final CompartmentRepository compartmentRepository;
+    private final IngredientRepository ingredientRepository;
 
     @GetMapping("/me")
     public ResponseEntity<UserProfileResponse> me(@AuthenticationPrincipal Object principal) {
@@ -72,6 +86,45 @@ public class UserController {
                             .build());
                 })
                 .orElse(ResponseEntity.notFound().build());
+    }
+
+    @Transactional
+    @DeleteMapping("/me")
+    public ResponseEntity<Void> withdraw(@AuthenticationPrincipal Object principal) {
+        if (!(principal instanceof Long userId)) {
+            return ResponseEntity.status(401).build();
+        }
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 유저입니다."));
+
+        // 1. 해당 유저가 속한 모든 냉장고 관계 조회
+        List<FridgeMember> members = fridgeMemberRepository.findByUserId(userId);
+
+        for (FridgeMember member : members) {
+            Fridge fridge = member.getFridge();
+            if (member.getRole() == MemberRole.OWNER) {
+                // 2. 소유주인 경우 냉장고와 연관 데이터 완전 삭제
+                List<Ingredient> ingredients = ingredientRepository.findByCompartmentFridgeId(fridge.getId());
+                ingredientRepository.deleteAll(ingredients);
+
+                List<Compartment> compartments = compartmentRepository.findByFridgeIdOrderBySequenceOrderAsc(fridge.getId());
+                compartmentRepository.deleteAll(compartments);
+
+                List<FridgeMember> fridgeMembers = fridgeMemberRepository.findByFridgeId(fridge.getId());
+                fridgeMemberRepository.deleteAll(fridgeMembers);
+
+                fridgeRepository.delete(fridge);
+            } else {
+                // 3. 공동 관리 멤버인 경우 본인의 멤버 관계만 삭제
+                fridgeMemberRepository.delete(member);
+            }
+        }
+
+        // 4. 유저 삭제
+        userRepository.delete(user);
+
+        return ResponseEntity.noContent().build();
     }
 
     @Data
