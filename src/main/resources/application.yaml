@@ -40,6 +40,15 @@ spring:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
 
+# 로컬 개발 편의: 웹/Expo 패키저/클라우드플레어 터널 등 허용
+app:
+  cors:
+    allowed-origin-patterns:
+      - "http://localhost:[*]"
+      - "http://127.0.0.1:[*]"
+      - "http://192.168.*.*:[*]"
+      - "https://*.trycloudflare.com"
+
 ---
 # Production / Server (using MariaDB)
 spring:
@@ -53,6 +62,7 @@ spring:
     password: ${DB_PASSWORD}
   jpa:
     hibernate:
+      # TODO(보안): 최초 스키마 생성 후 Flyway/Liquibase 도입하고 validate 로 전환할 것.
       ddl-auto: update
     show-sql: false
     properties:
@@ -62,3 +72,8 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+
+# 운영: 반드시 실제 프론트엔드 도메인만 지정한다. 콤마로 구분된 환경변수로 주입.
+app:
+  cors:
+    allowed-origin-patterns: ${CORS_ALLOWED_ORIGINS:}

@@ -6,12 +6,22 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 
+import java.util.regex.Pattern;
+
 @Controller
 public class ShareController {
+
+    // 표준 UUID(8-4-4-4-12 hex) 형식만 허용하여 스크립트 컨텍스트 주입(XSS)을 차단한다.
+    private static final Pattern UUID_PATTERN =
+            Pattern.compile("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
 
     @GetMapping(value = "/share/fridge", produces = MediaType.TEXT_HTML_VALUE)
     @ResponseBody
     public String shareFridgeLanding(@RequestParam("uuid") String uuid) {
+        if (uuid == null || !UUID_PATTERN.matcher(uuid).matches()) {
+            return "<!DOCTYPE html><html><head><meta charset=\"UTF-8\"></head>" +
+                    "<body><h2>잘못된 공유 링크입니다.</h2></body></html>";
+        }
         return "<!DOCTYPE html>\n" +
                 "<html>\n" +
                 "<head>\n" +

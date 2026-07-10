@@ -8,28 +8,37 @@ import com.example.fresh_keep.domain.user.repository.UserRepository;
 import com.example.fresh_keep.global.security.jwt.JwtProvider;
 import com.example.fresh_keep.global.security.jwt.dto.TokenResponse;
 import com.example.fresh_keep.global.util.SecurityUtil;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.Builder;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
- 
+
 import java.security.SecureRandom;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
- 
+import java.util.concurrent.TimeUnit;
+
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
 public class AnonymousAuthController {
- 
+
     private final UserRepository userRepository;
     private final JwtProvider jwtProvider;
     private final FridgeMemberRepository fridgeMemberRepository;
     private final FridgeRepository fridgeRepository;
+    private final StringRedisTemplate redisTemplate;
+
+    // 백업 키 복구 브루트포스 방어: 동일 IP 기준 10분 내 최대 시도 횟수
+    private static final int RESTORE_MAX_ATTEMPTS = 10;
+    private static final long RESTORE_WINDOW_MINUTES = 10;
  
     @PostMapping("/anonymous")
     public ResponseEntity<?> authenticateAnonymous(@RequestBody DeviceRegisterRequest request) {
@@ -80,39 +89,57 @@ public class AnonymousAuthController {
                 .build());
     }
 
-    @GetMapping("/backup-key")
-    public ResponseEntity<?> getBackupKey(@AuthenticationPrincipal Object principal) {
+    /**
+     * 백업 키 재발급.
+     * 백업 키는 해시로만 저장되므로 원본을 되돌려줄 수 없다. 따라서 이 엔드포인트는
+     * 새 키를 발급(로테이션)하여 평문을 "이번 응답에서 한 번만" 반환한다.
+     * 이전 키는 즉시 무효화되므로 클라이언트는 반환된 키를 안전하게 보관하도록 안내해야 한다.
+     */
+    @Transactional
+    @PostMapping("/backup-key/reissue")
+    public ResponseEntity<?> reissueBackupKey(@AuthenticationPrincipal Object principal) {
         if (!(principal instanceof Long userId)) {
             return ResponseEntity.status(401).body(Map.of("message", "Unauthorized"));
         }
 
         return userRepository.findById(userId)
                 .map(user -> {
-                    if (user.getBackupKey() == null) {
-                        String newKey = generateUniqueBackupKey();
-                        user.updateBackupKey(SecurityUtil.encryptSHA256(newKey));
-                        userRepository.save(user);
-                    }
-                    return ResponseEntity.ok(Map.of("backupKey", user.getBackupKey()));
+                    String newKey = generateUniqueBackupKey();
+                    user.updateBackupKey(SecurityUtil.encryptSHA256(newKey));
+                    userRepository.save(user);
+                    // 해시가 아닌 평문 키를 1회 반환한다.
+                    return ResponseEntity.ok(Map.of("backupKey", newKey));
                 })
                 .orElse(ResponseEntity.notFound().build());
     }
 
     @Transactional
     @PostMapping("/restore")
-    public ResponseEntity<?> restoreSession(@RequestBody RestoreRequest request) {
+    public ResponseEntity<?> restoreSession(@RequestBody RestoreRequest request, HttpServletRequest httpRequest) {
+        // 브루트포스 방어: IP 기준 시도 횟수 제한
+        String clientIp = getClientIp(httpRequest);
+        String rlKey = "RL:restore:" + clientIp;
+        Long attempts = redisTemplate.opsForValue().increment(rlKey);
+        if (attempts != null && attempts == 1L) {
+            redisTemplate.expire(rlKey, RESTORE_WINDOW_MINUTES, TimeUnit.MINUTES);
+        }
+        if (attempts != null && attempts > RESTORE_MAX_ATTEMPTS) {
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                    .body(Map.of("message", "복구 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요."));
+        }
+
         if (request.getBackupKey() == null || request.getBackupKey().trim().isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("message", "백업 키를 입력해 주세요."));
         }
         if (request.getDeviceUuid() == null || request.getDeviceUuid().trim().isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("message", "Device UUID is required."));
         }
- 
+
         String rawBackupKey = request.getBackupKey().trim();
         String hashedBackupKey = SecurityUtil.encryptSHA256(rawBackupKey);
         String rawDeviceUuid = request.getDeviceUuid().trim();
         String hashedDeviceUuid = SecurityUtil.encryptSHA256(rawDeviceUuid);
- 
+
         Optional<User> targetUserOpt = userRepository.findByBackupKey(hashedBackupKey);
         if (targetUserOpt.isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("message", "유효하지 않은 백업 키입니다."));
@@ -197,6 +224,17 @@ public class AnonymousAuthController {
         String adj = adjectives[random.nextInt(adjectives.length)];
         String noun = nouns[random.nextInt(nouns.length)];
         return adj + noun;
+    }
+
+    private String getClientIp(HttpServletRequest request) {
+        String ip = request.getHeader("X-Forwarded-For");
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getRemoteAddr();
+        }
+        if (ip != null && ip.contains(",")) {
+            ip = ip.split(",")[0].trim();
+        }
+        return ip != null ? ip : "unknown";
     }
 
     @Data
