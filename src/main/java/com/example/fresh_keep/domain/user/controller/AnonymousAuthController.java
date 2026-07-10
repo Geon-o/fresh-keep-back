@@ -35,6 +35,7 @@ public class AnonymousAuthController {
     private final FridgeMemberRepository fridgeMemberRepository;
     private final FridgeRepository fridgeRepository;
     private final StringRedisTemplate redisTemplate;
+    private final SecurityUtil securityUtil;
 
     // 백업 키 복구 브루트포스 방어: 동일 IP 기준 10분 내 최대 시도 횟수
     private static final int RESTORE_MAX_ATTEMPTS = 10;
@@ -47,7 +48,7 @@ public class AnonymousAuthController {
         }
  
         String rawDeviceUuid = request.getDeviceUuid().trim();
-        String hashedDeviceUuid = SecurityUtil.encryptSHA256(rawDeviceUuid);
+        String hashedDeviceUuid = securityUtil.hash(rawDeviceUuid);
         Optional<User> existingUser = userRepository.findByDeviceUuid(hashedDeviceUuid);
         User user;
         String plainBackupKey = null;
@@ -58,7 +59,7 @@ public class AnonymousAuthController {
             } else {
                 // Create a new anonymous user
                 plainBackupKey = generateUniqueBackupKey();
-                String hashedBackupKey = SecurityUtil.encryptSHA256(plainBackupKey);
+                String hashedBackupKey = securityUtil.hash(plainBackupKey);
                 user = User.builder()
                         .name(generateRandomNickname())
                         .deviceUuid(hashedDeviceUuid)
@@ -105,7 +106,7 @@ public class AnonymousAuthController {
         return userRepository.findById(userId)
                 .map(user -> {
                     String newKey = generateUniqueBackupKey();
-                    user.updateBackupKey(SecurityUtil.encryptSHA256(newKey));
+                    user.updateBackupKey(securityUtil.hash(newKey));
                     userRepository.save(user);
                     // 해시가 아닌 평문 키를 1회 반환한다.
                     return ResponseEntity.ok(Map.of("backupKey", newKey));
@@ -136,9 +137,9 @@ public class AnonymousAuthController {
         }
 
         String rawBackupKey = request.getBackupKey().trim();
-        String hashedBackupKey = SecurityUtil.encryptSHA256(rawBackupKey);
+        String hashedBackupKey = securityUtil.hash(rawBackupKey);
         String rawDeviceUuid = request.getDeviceUuid().trim();
-        String hashedDeviceUuid = SecurityUtil.encryptSHA256(rawDeviceUuid);
+        String hashedDeviceUuid = securityUtil.hash(rawDeviceUuid);
 
         Optional<User> targetUserOpt = userRepository.findByBackupKey(hashedBackupKey);
         if (targetUserOpt.isEmpty()) {
@@ -203,7 +204,7 @@ public class AnonymousAuthController {
                 if (i < 2) sb.append("-");
             }
             key = sb.toString();
-        } while (userRepository.findByBackupKey(SecurityUtil.encryptSHA256(key)).isPresent());
+        } while (userRepository.findByBackupKey(securityUtil.hash(key)).isPresent());
         return key;
     }
 

@@ -11,6 +11,10 @@ jwt:
   access-token-expiration: 900000
   refresh-token-expiration: 604800000
 
+security:
+  # 연동 코드/기기 UUID HMAC 해싱용 서버 비밀키. 절대 커밋하지 말고 환경변수로 주입.
+  hmac-secret: ${HMAC_SECRET}
+
 
 
 
