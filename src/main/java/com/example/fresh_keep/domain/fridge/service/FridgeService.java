@@ -19,6 +19,7 @@ import com.example.fresh_keep.domain.fridge.dto.UpdateFridgeRequest;
 import com.example.fresh_keep.domain.fridge.dto.UpdateShelvesRequest;
 import com.example.fresh_keep.domain.ingredient.dto.IngredientDetailResponse;
 import com.example.fresh_keep.domain.ingredient.entity.Ingredient;
+import com.example.fresh_keep.domain.ingredient.enums.ExpirationType;
 import com.example.fresh_keep.domain.ingredient.repository.IngredientRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.CacheEvict;
@@ -124,6 +125,7 @@ public class FridgeService {
                                     .quantity(ing.getQuantity())
                                     .unit(ing.getUnit())
                                     .expirationDate(ing.getExpirationDate())
+                                    .expirationType(ing.getExpirationType() != null ? ing.getExpirationType() : ExpirationType.SELL_BY)
                                     .dday(ChronoUnit.DAYS.between(now, ing.getExpirationDate()))
                                     .memo(ing.getMemo())
                                     .build())

@@ -7,6 +7,7 @@ import com.example.fresh_keep.domain.ingredient.dto.AddIngredientRequest;
 import com.example.fresh_keep.domain.ingredient.dto.IngredientDetailResponse;
 import com.example.fresh_keep.domain.ingredient.dto.UpdateIngredientRequest;
 import com.example.fresh_keep.domain.ingredient.entity.Ingredient;
+import com.example.fresh_keep.domain.ingredient.enums.ExpirationType;
 import com.example.fresh_keep.domain.ingredient.repository.IngredientRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.Cache;
@@ -46,6 +47,7 @@ public class IngredientService {
                 .quantity(request.getQuantity())
                 .unit(request.getUnit())
                 .expirationDate(request.getExpirationDate())
+                .expirationType(request.getExpirationType())
                 .memo(request.getMemo())
                 .build();
         ingredientRepository.save(ingredient);
@@ -73,9 +75,10 @@ public class IngredientService {
         Double newQuantity = request.getQuantity() != null ? request.getQuantity() : ingredient.getQuantity();
         String newUnit = request.getUnit() != null ? request.getUnit() : ingredient.getUnit();
         LocalDate newExpirationDate = request.getExpirationDate() != null ? request.getExpirationDate() : ingredient.getExpirationDate();
+        ExpirationType newExpirationType = request.getExpirationType() != null ? request.getExpirationType() : ingredient.getExpirationType();
         String newMemo = request.getMemo() != null ? request.getMemo() : ingredient.getMemo();
 
-        ingredient.update(newName, newQuantity, newUnit, newExpirationDate, newMemo);
+        ingredient.update(newName, newQuantity, newUnit, newExpirationDate, newExpirationType, newMemo);
 
         // 구획 이동 처리
         if (request.getCompartmentId() != null) {
@@ -133,6 +136,7 @@ public class IngredientService {
                 .quantity(ingredient.getQuantity())
                 .unit(ingredient.getUnit())
                 .expirationDate(ingredient.getExpirationDate())
+                .expirationType(ingredient.getExpirationType() != null ? ingredient.getExpirationType() : ExpirationType.SELL_BY)
                 .dday(ChronoUnit.DAYS.between(now, ingredient.getExpirationDate()))
                 .memo(ingredient.getMemo())
                 .build();

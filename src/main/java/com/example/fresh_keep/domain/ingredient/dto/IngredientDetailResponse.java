@@ -1,5 +1,6 @@
 package com.example.fresh_keep.domain.ingredient.dto;
 
+import com.example.fresh_keep.domain.ingredient.enums.ExpirationType;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -17,6 +18,7 @@ public class IngredientDetailResponse {
     private Double quantity;
     private String unit;
     private LocalDate expirationDate;
+    private ExpirationType expirationType;
     private Long dday;
     private String memo;
 }

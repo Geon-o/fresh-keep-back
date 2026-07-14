@@ -1,5 +1,6 @@
 package com.example.fresh_keep.domain.ingredient.dto;
 
+import com.example.fresh_keep.domain.ingredient.enums.ExpirationType;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
@@ -26,6 +27,9 @@ public class AddIngredientRequest {
 
     @NotNull(message = "유통기한은 필수입니다.")
     private LocalDate expirationDate;
+
+    @NotNull(message = "기한 종류는 필수입니다.")
+    private ExpirationType expirationType;
 
     private String memo;
 }

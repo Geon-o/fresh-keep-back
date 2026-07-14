@@ -1,6 +1,7 @@
 package com.example.fresh_keep.domain.ingredient.entity;
 
 import com.example.fresh_keep.domain.fridge.entity.Compartment;
+import com.example.fresh_keep.domain.ingredient.enums.ExpirationType;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -35,6 +36,12 @@ public class Ingredient {
     @Column(name = "expiration_date", nullable = false)
     private LocalDate expirationDate;
 
+    // 기존 행에는 값이 없을 수 있어 컬럼 자체는 nullable로 두고,
+    // 조회 시 IngredientService#mapToResponse에서 SELL_BY로 기본 처리한다.
+    @Enumerated(EnumType.STRING)
+    @Column(name = "expiration_type")
+    private ExpirationType expirationType;
+
     private String memo;
 
     private LocalDateTime createdAt;
@@ -44,11 +51,12 @@ public class Ingredient {
         this.compartment = compartment;
     }
 
-    public void update(String name, Double quantity, String unit, LocalDate expirationDate, String memo) {
+    public void update(String name, Double quantity, String unit, LocalDate expirationDate, ExpirationType expirationType, String memo) {
         this.name = name;
         this.quantity = quantity;
         this.unit = unit;
         this.expirationDate = expirationDate;
+        this.expirationType = expirationType;
         this.memo = memo;
     }
 
