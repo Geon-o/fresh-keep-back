@@ -19,7 +19,7 @@ security:
 
 
 server:
-  port: 8086
+  port: ${SERVER_PORT:8086}
   forward-headers-strategy: framework
 ---
 # Local Development (using H2)
@@ -54,13 +54,13 @@ app:
       - "http://192.168.*.*:[*]"
 
 ---
-# Production / Server (using MariaDB)
+# Production / Server (using MySQL)
 spring:
   config:
     activate:
       on-profile: prod
   datasource:
-    driver-class-name: org.mariadb.jdbc.Driver
+    driver-class-name: com.mysql.cj.jdbc.Driver
     url: ${DB_URL}
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
