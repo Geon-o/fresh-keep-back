@@ -6,6 +6,7 @@ import com.example.fresh_keep.domain.fridge.repository.FridgeRepository;
 import com.example.fresh_keep.domain.user.entity.User;
 import com.example.fresh_keep.domain.user.repository.UserRepository;
 import com.example.fresh_keep.global.security.jwt.JwtProvider;
+import com.example.fresh_keep.global.security.jwt.RefreshTokenSessionService;
 import com.example.fresh_keep.global.security.jwt.dto.TokenResponse;
 import com.example.fresh_keep.global.util.SecurityUtil;
 import jakarta.servlet.http.HttpServletRequest;
@@ -36,13 +37,14 @@ public class AnonymousAuthController {
     private final FridgeRepository fridgeRepository;
     private final StringRedisTemplate redisTemplate;
     private final SecurityUtil securityUtil;
+    private final RefreshTokenSessionService refreshTokenSessionService;
 
     // 백업 키 복구 브루트포스 방어: 동일 IP 기준 10분 내 최대 시도 횟수
     private static final int RESTORE_MAX_ATTEMPTS = 10;
     private static final long RESTORE_WINDOW_MINUTES = 10;
  
     @PostMapping("/anonymous")
-    public ResponseEntity<?> authenticateAnonymous(@RequestBody DeviceRegisterRequest request) {
+    public ResponseEntity<?> authenticateAnonymous(@RequestBody DeviceRegisterRequest request, HttpServletRequest httpRequest) {
         if (request.getDeviceUuid() == null || request.getDeviceUuid().trim().isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("message", "Device UUID is required."));
         }
@@ -82,7 +84,8 @@ public class AnonymousAuthController {
         String subject = user.getDeviceUuid() != null ? user.getDeviceUuid() + "@freshkeep.anonymous" : "anonymous_" + user.getId() + "@freshkeep.anonymous";
         String accessToken = jwtProvider.generateAccessToken(user.getId(), subject, user.getName());
         String refreshToken = jwtProvider.generateRefreshToken(user.getId(), subject);
- 
+        refreshTokenSessionService.save(user.getId(), refreshToken, httpRequest);
+
         return ResponseEntity.ok(TokenResponse.builder()
                 .accessToken(accessToken)
                 .refreshToken(refreshToken)
@@ -118,7 +121,7 @@ public class AnonymousAuthController {
     @PostMapping("/restore")
     public ResponseEntity<?> restoreSession(@RequestBody RestoreRequest request, HttpServletRequest httpRequest) {
         // 브루트포스 방어: IP 기준 시도 횟수 제한
-        String clientIp = getClientIp(httpRequest);
+        String clientIp = refreshTokenSessionService.resolveClientIp(httpRequest);
         String rlKey = "RL:restore:" + clientIp;
         Long attempts = redisTemplate.opsForValue().increment(rlKey);
         if (attempts != null && attempts == 1L) {
@@ -183,6 +186,7 @@ public class AnonymousAuthController {
         String subject = user.getDeviceUuid() != null ? user.getDeviceUuid() + "@freshkeep.anonymous" : "anonymous_" + user.getId() + "@freshkeep.anonymous";
         String accessToken = jwtProvider.generateAccessToken(user.getId(), subject, user.getName());
         String refreshToken = jwtProvider.generateRefreshToken(user.getId(), subject);
+        refreshTokenSessionService.save(user.getId(), refreshToken, httpRequest);
 
         return ResponseEntity.ok(TokenResponse.builder()
                 .accessToken(accessToken)
@@ -225,17 +229,6 @@ public class AnonymousAuthController {
         String adj = adjectives[random.nextInt(adjectives.length)];
         String noun = nouns[random.nextInt(nouns.length)];
         return adj + noun;
-    }
-
-    private String getClientIp(HttpServletRequest request) {
-        String ip = request.getHeader("X-Forwarded-For");
-        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
-            ip = request.getRemoteAddr();
-        }
-        if (ip != null && ip.contains(",")) {
-            ip = ip.split(",")[0].trim();
-        }
-        return ip != null ? ip : "unknown";
     }
 
     @Data

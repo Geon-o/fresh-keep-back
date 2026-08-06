@@ -4,13 +4,13 @@ import com.example.fresh_keep.domain.user.dto.RefreshRequest;
 import com.example.fresh_keep.domain.user.entity.User;
 import com.example.fresh_keep.domain.user.repository.UserRepository;
 import com.example.fresh_keep.global.security.jwt.JwtProvider;
+import com.example.fresh_keep.global.security.jwt.RefreshTokenSessionService;
 import com.example.fresh_keep.global.security.jwt.dto.TokenResponse;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -30,9 +30,7 @@ public class AuthController {
     private final JwtProvider jwtProvider;
     private final StringRedisTemplate redisTemplate;
     private final UserRepository userRepository;
-
-    @Value("${jwt.refresh-token-expiration:604800000}")
-    private long refreshTokenExpiration;
+    private final RefreshTokenSessionService refreshTokenSessionService;
 
     @PostMapping("/refresh")
     public ResponseEntity<?> refresh(
@@ -63,7 +61,6 @@ public class AuthController {
 
         String[] parts = storedValue.split("\\|", 3);
         String storedToken = parts[0];
-        String storedIp = parts.length > 1 ? parts[1] : "";
         String storedUserAgent = parts.length > 2 ? parts[2] : "";
 
         // Replay attack check
@@ -74,7 +71,6 @@ public class AuthController {
         }
 
         // Client context verification
-        String clientIp = getClientIp(request);
         String userAgent = request.getHeader("User-Agent");
 
         if (!storedUserAgent.equals(userAgent != null ? userAgent : "UNKNOWN")) {
@@ -92,8 +88,7 @@ public class AuthController {
         String newRefreshToken = jwtProvider.generateRefreshToken(user.getId(), userSubject);
 
         // Save new Refresh Token (RTR)
-        String newValue = newRefreshToken + "|" + clientIp + "|" + (userAgent != null ? userAgent : "UNKNOWN");
-        redisTemplate.opsForValue().set(redisKey, newValue, refreshTokenExpiration, TimeUnit.MILLISECONDS);
+        refreshTokenSessionService.save(userId, newRefreshToken, request);
 
         // Update cookie
         setAccessTokenCookie(response, newAccessToken);
@@ -152,24 +147,7 @@ public class AuthController {
         cookie.setPath("/");
         cookie.setMaxAge((int) (jwtProvider.getClaims(accessToken).getExpiration().getTime() - System.currentTimeMillis()) / 1000);
         response.addCookie(cookie);
-        response.addHeader("Set-Cookie", String.format("accessToken=%s; Max-Age=%d; Path=/; Secure; HttpOnly; SameSite=Strict", 
+        response.addHeader("Set-Cookie", String.format("accessToken=%s; Max-Age=%d; Path=/; Secure; HttpOnly; SameSite=Strict",
                 accessToken, cookie.getMaxAge()));
-    }
-
-    private String getClientIp(HttpServletRequest request) {
-        String ip = request.getHeader("X-Forwarded-For");
-        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
-            ip = request.getHeader("Proxy-Client-IP");
-        }
-        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
-            ip = request.getHeader("WL-Proxy-Client-IP");
-        }
-        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
-            ip = request.getRemoteAddr();
-        }
-        if (ip != null && ip.contains(",")) {
-            ip = ip.split(",")[0].trim();
-        }
-        return ip;
     }
 }
