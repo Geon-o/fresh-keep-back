@@ -89,6 +89,24 @@ public class UserController {
     }
 
     @Transactional
+    @PatchMapping("/me/push-token")
+    public ResponseEntity<?> updatePushToken(
+            @AuthenticationPrincipal Object principal,
+            @RequestBody PushTokenUpdateRequest request) {
+        if (!(principal instanceof Long userId)) {
+            return ResponseEntity.status(401).body(Map.of("message", "UNAUTHORIZED"));
+        }
+
+        return userRepository.findById(userId)
+                .map(user -> {
+                    user.updateExpoPushToken(request.getExpoPushToken());
+                    userRepository.save(user);
+                    return ResponseEntity.ok().build();
+                })
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    @Transactional
     @DeleteMapping("/me")
     public ResponseEntity<Void> withdraw(@AuthenticationPrincipal Object principal) {
         if (!(principal instanceof Long userId)) {
@@ -130,5 +148,10 @@ public class UserController {
     @Data
     public static class NicknameUpdateRequest {
         private String name;
+    }
+
+    @Data
+    public static class PushTokenUpdateRequest {
+        private String expoPushToken;
     }
 }

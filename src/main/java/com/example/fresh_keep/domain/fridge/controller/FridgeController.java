@@ -1,6 +1,7 @@
 package com.example.fresh_keep.domain.fridge.controller;
 
 import com.example.fresh_keep.domain.fridge.dto.CreateFridgeRequest;
+import com.example.fresh_keep.domain.fridge.dto.FridgeDeletionResponse;
 import com.example.fresh_keep.domain.fridge.dto.FridgeResponse;
 import com.example.fresh_keep.domain.fridge.dto.UpdateFridgeRequest;
 import com.example.fresh_keep.domain.fridge.dto.UpdateShelvesRequest;
@@ -83,7 +84,7 @@ public class FridgeController {
     }
 
     @DeleteMapping("/{fridgeId}")
-    public ResponseEntity<Void> deleteFridge(
+    public ResponseEntity<FridgeDeletionResponse> deleteFridge(
             @PathVariable("fridgeId") Long fridgeId,
             @AuthenticationPrincipal Object principal) {
 
@@ -91,8 +92,47 @@ public class FridgeController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
-        fridgeService.deleteFridge(fridgeId, userId);
-        return ResponseEntity.noContent().build();
+        FridgeDeletionResponse response = fridgeService.deleteFridge(fridgeId, userId);
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/{fridgeId}/deletion/approve")
+    public ResponseEntity<FridgeDeletionResponse> approveDeletion(
+            @PathVariable("fridgeId") Long fridgeId,
+            @AuthenticationPrincipal Object principal) {
+
+        if (!(principal instanceof Long userId)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        FridgeDeletionResponse response = fridgeService.approveDeletion(fridgeId, userId);
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/{fridgeId}/deletion/reject")
+    public ResponseEntity<Void> rejectDeletion(
+            @PathVariable("fridgeId") Long fridgeId,
+            @AuthenticationPrincipal Object principal) {
+
+        if (!(principal instanceof Long userId)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        fridgeService.rejectDeletion(fridgeId, userId);
+        return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/{fridgeId}/deletion/cancel")
+    public ResponseEntity<Void> cancelDeletionRequest(
+            @PathVariable("fridgeId") Long fridgeId,
+            @AuthenticationPrincipal Object principal) {
+
+        if (!(principal instanceof Long userId)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        fridgeService.cancelDeletionRequest(fridgeId, userId);
+        return ResponseEntity.ok().build();
     }
 
     @PutMapping("/{fridgeId}/compartments/{compartmentId}/shelves")
