@@ -63,9 +63,9 @@ public class UserController {
 
         String name = request.getName().trim();
 
-        // 1. 특수문자, 공백, 이모지 방지 및 2~20자 길이 검증
+        // 1. 특수문자, 공백, 이모지 방지 및 2~8자 길이 검증
         // 한글, 영문, 숫자만 허용
-        if (!name.matches("^[a-zA-Z0-9가-힣]{2,20}$")) {
+        if (!name.matches("^[a-zA-Z0-9가-힣]{2,8}$")) {
             return ResponseEntity.badRequest().body(Map.of("message", "INVALID_NICKNAME"));
         }
 
