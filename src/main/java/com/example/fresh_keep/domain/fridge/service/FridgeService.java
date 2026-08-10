@@ -208,8 +208,13 @@ public class FridgeService {
         @CacheEvict(value = "fridgeLayout", key = "#p0")
     })
     public void deleteFridge(Long fridgeId, Long userId) {
-        if (!fridgeMemberRepository.existsByFridgeIdAndUserId(fridgeId, userId)) {
-            throw new IllegalArgumentException("해당 냉장고에 대한 삭제 권한이 없습니다.");
+        FridgeMember requester = fridgeMemberRepository.findByFridgeIdAndUserId(fridgeId, userId)
+                .orElseThrow(() -> new IllegalArgumentException("해당 냉장고에 대한 삭제 권한이 없습니다."));
+
+        // OWNER가 아닌 MEMBER는 냉장고 전체를 삭제할 수 없고, 본인 멤버십만 제거(나가기)한다.
+        if (requester.getRole() != MemberRole.OWNER) {
+            fridgeMemberRepository.delete(requester);
+            return;
         }
 
         List<Ingredient> ingredients = ingredientRepository.findByCompartmentFridgeId(fridgeId);
