@@ -101,11 +101,17 @@ public class FridgeService {
         List<FridgeMember> members = fridgeMemberRepository.findByUserId(userId);
         return members.stream()
                 .map(m -> {
-                    String ownerName = fridgeMemberRepository.findByFridgeId(m.getFridge().getId()).stream()
+                    List<FridgeMember> fridgeMembers = fridgeMemberRepository.findByFridgeId(m.getFridge().getId());
+                    String ownerName = fridgeMembers.stream()
                             .filter(fm -> fm.getRole() == MemberRole.OWNER)
                             .map(fm -> fm.getUser().getName())
                             .findFirst()
                             .orElse(null);
+                    // 주인을 맨 앞에 두고 나머지 멤버 이름을 뒤에 붙인다. 1명뿐이면 공유 안 하는 상태.
+                    List<String> memberNames = fridgeMembers.stream()
+                            .sorted((a, b) -> a.getRole() == MemberRole.OWNER ? -1 : b.getRole() == MemberRole.OWNER ? 1 : 0)
+                            .map(fm -> fm.getUser().getName())
+                            .collect(Collectors.toList());
                     return FridgeResponse.builder()
                             .id(m.getFridge().getId())
                             .name(m.getFridge().getName())
@@ -114,6 +120,7 @@ public class FridgeService {
                             .uuid(m.getFridge().getUuid())
                             .deletionRequested(m.getFridge().isDeletionRequested())
                             .ownerName(ownerName)
+                            .memberNames(memberNames)
                             .build();
                 })
                 .collect(Collectors.toList());

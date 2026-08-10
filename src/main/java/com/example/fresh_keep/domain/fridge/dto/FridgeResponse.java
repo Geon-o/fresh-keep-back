@@ -7,6 +7,8 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
+
 @Getter
 @Builder
 @NoArgsConstructor
@@ -19,4 +21,6 @@ public class FridgeResponse {
     private String uuid;
     private boolean deletionRequested;
     private String ownerName;
+    // 이 냉장고를 함께 쓰는 멤버 전원의 닉네임(본인 포함, 주인이 맨 앞). 1명뿐이면 공유 안 하는 상태.
+    private List<String> memberNames;
 }
