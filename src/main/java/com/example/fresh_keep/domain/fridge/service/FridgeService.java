@@ -190,9 +190,8 @@ public class FridgeService {
     })
     public FridgeResponse updateFridge(Long fridgeId, UpdateFridgeRequest request, Long userId) {
         // 1. 권한 검증
-        if (!fridgeMemberRepository.existsByFridgeIdAndUserId(fridgeId, userId)) {
-            throw new IllegalArgumentException("해당 냉장고에 대한 수정 권한이 없습니다.");
-        }
+        FridgeMember requester = fridgeMemberRepository.findByFridgeIdAndUserId(fridgeId, userId)
+                .orElseThrow(() -> new IllegalArgumentException("해당 냉장고에 대한 수정 권한이 없습니다."));
 
         // 2. 냉장고 조회
         Fridge fridge = fridgeRepository.findById(fridgeId)
@@ -200,6 +199,11 @@ public class FridgeService {
 
         FridgeType oldType = fridge.getType();
         FridgeType newType = request.getType();
+
+        // 타입 변경은 기존 식재료·구획을 전부 초기화하는 파괴적 작업이라 주인만 할 수 있다 (이름 변경은 멤버도 가능).
+        if (oldType != newType && requester.getRole() != MemberRole.OWNER) {
+            throw new IllegalArgumentException("냉장고 타입 변경은 주인만 할 수 있습니다.");
+        }
 
         // 3. 냉장고 이름 및 타입 변경
         fridge.update(request.getName(), newType);
@@ -218,17 +222,11 @@ public class FridgeService {
             createDefaultCompartments(fridge);
         }
 
-        MemberRole role = fridgeMemberRepository.findByUserId(userId).stream()
-                .filter(m -> m.getFridge().getId().equals(fridgeId))
-                .map(FridgeMember::getRole)
-                .findFirst()
-                .orElse(MemberRole.OWNER);
-
         return FridgeResponse.builder()
                 .id(fridge.getId())
                 .name(fridge.getName())
                 .type(fridge.getType())
-                .role(role)
+                .role(requester.getRole())
                 .uuid(fridge.getUuid())
                 .deletionRequested(fridge.isDeletionRequested())
                 .build();
