@@ -376,6 +376,10 @@ public class FridgeService {
         return Map.of("type", "fridge_deletion", "fridgeId", fridgeId);
     }
 
+    private Map<String, Object> sharePushData(Long fridgeId) {
+        return Map.of("type", "fridge_share", "fridgeId", fridgeId);
+    }
+
     // 삭제 요청 상태를 초기화하고, 이후 알림 발송에 쓸 수 있도록 멤버 목록을 반환한다.
     private List<FridgeMember> clearDeletionRequestState(Long fridgeId) {
         Fridge fridge = fridgeRepository.findById(fridgeId)
@@ -495,6 +499,7 @@ public class FridgeService {
                     .role(existingMember.get().getRole())
                     .uuid(fridge.getUuid())
                     .deletionRequested(fridge.isDeletionRequested())
+                    .alreadyMember(true)
                     .build();
         }
 
@@ -504,6 +509,16 @@ public class FridgeService {
                 .role(MemberRole.MEMBER)
                 .build();
         fridgeMemberRepository.save(fridgeMember);
+
+        // 새 멤버가 합류했다는 걸 주인/기존 멤버들도 바로 알 수 있도록, 본인 캐시(#p1)뿐 아니라
+        // 이미 있던 멤버들의 "fridges" 캐시도 같이 비운다 (안 그러면 최대 30분 동안 공유 뱃지 등이 안 보임).
+        allMembers.forEach(m -> evictFridgesCacheFor(m.getUser().getId()));
+        allMembers.forEach(m -> pushNotificationService.send(
+                m.getUser().getExpoPushToken(),
+                "냉장고 공유 알림",
+                user.getName() + "님이 '" + fridge.getName() + "' 공동 관리에 참여했습니다.",
+                sharePushData(fridge.getId())
+        ));
 
         return FridgeResponse.builder()
                 .id(fridge.getId())
