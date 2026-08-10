@@ -28,12 +28,27 @@ public class Fridge {
     @Column(unique = true, nullable = false)
     private String uuid;
 
+    // null이 아니면 주인이 삭제를 요청해 다른 멤버들의 동의를 기다리는 중임을 의미한다.
+    private LocalDateTime deletionRequestedAt;
+
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
     public void update(String name, FridgeType type) {
         this.name = name;
         this.type = type;
+    }
+
+    public void requestDeletion() {
+        this.deletionRequestedAt = LocalDateTime.now();
+    }
+
+    public void cancelDeletionRequest() {
+        this.deletionRequestedAt = null;
+    }
+
+    public boolean isDeletionRequested() {
+        return this.deletionRequestedAt != null;
     }
 
     @PrePersist

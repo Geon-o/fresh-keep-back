@@ -1,6 +1,7 @@
 package com.example.fresh_keep.domain.fridge.service;
 
 import com.example.fresh_keep.domain.fridge.dto.CreateFridgeRequest;
+import com.example.fresh_keep.domain.fridge.dto.FridgeDeletionResponse;
 import com.example.fresh_keep.domain.fridge.dto.FridgeResponse;
 import com.example.fresh_keep.domain.fridge.entity.Compartment;
 import com.example.fresh_keep.domain.fridge.entity.Fridge;
@@ -21,7 +22,10 @@ import com.example.fresh_keep.domain.ingredient.dto.IngredientDetailResponse;
 import com.example.fresh_keep.domain.ingredient.entity.Ingredient;
 import com.example.fresh_keep.domain.ingredient.enums.ExpirationType;
 import com.example.fresh_keep.domain.ingredient.repository.IngredientRepository;
+import com.example.fresh_keep.global.notification.PushNotificationService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.cache.annotation.Caching;
@@ -46,6 +50,17 @@ public class FridgeService {
     private final CompartmentRepository compartmentRepository;
     private final UserRepository userRepository;
     private final IngredientRepository ingredientRepository;
+    private final CacheManager cacheManager;
+    private final PushNotificationService pushNotificationService;
+
+    // 삭제 요청/동의/철회처럼 나 아닌 다른 멤버의 화면에도 반영돼야 하는 변경 후,
+    // @CacheEvict(key = 현재 유저)만으로는 안 닿는 다른 멤버들의 "fridges" 캐시를 직접 비운다.
+    private void evictFridgesCacheFor(Long userId) {
+        Cache cache = cacheManager.getCache("fridges");
+        if (cache != null) {
+            cache.evict(userId);
+        }
+    }
 
     @Transactional
     @CacheEvict(value = "fridges", key = "#p1")
@@ -85,13 +100,22 @@ public class FridgeService {
     public List<FridgeResponse> getFridges(Long userId) {
         List<FridgeMember> members = fridgeMemberRepository.findByUserId(userId);
         return members.stream()
-                .map(m -> FridgeResponse.builder()
-                        .id(m.getFridge().getId())
-                        .name(m.getFridge().getName())
-                        .type(m.getFridge().getType())
-                        .role(m.getRole())
-                        .uuid(m.getFridge().getUuid())
-                        .build())
+                .map(m -> {
+                    String ownerName = fridgeMemberRepository.findByFridgeId(m.getFridge().getId()).stream()
+                            .filter(fm -> fm.getRole() == MemberRole.OWNER)
+                            .map(fm -> fm.getUser().getName())
+                            .findFirst()
+                            .orElse(null);
+                    return FridgeResponse.builder()
+                            .id(m.getFridge().getId())
+                            .name(m.getFridge().getName())
+                            .type(m.getFridge().getType())
+                            .role(m.getRole())
+                            .uuid(m.getFridge().getUuid())
+                            .deletionRequested(m.getFridge().isDeletionRequested())
+                            .ownerName(ownerName)
+                            .build();
+                })
                 .collect(Collectors.toList());
     }
 
@@ -199,19 +223,165 @@ public class FridgeService {
                 .type(fridge.getType())
                 .role(role)
                 .uuid(fridge.getUuid())
+                .deletionRequested(fridge.isDeletionRequested())
                 .build();
     }
 
+    // 삭제 시도: 혼자 쓰는 냉장고는 즉시 삭제하지만, 다른 멤버와 공유 중이면 즉시 지우지 않고
+    // "삭제 요청" 상태로만 전환해 다른 멤버 전원의 동의를 받아야 실제로 삭제되게 한다.
     @Transactional
     @Caching(evict = {
         @CacheEvict(value = "fridges", key = "#p1"),
         @CacheEvict(value = "fridgeLayout", key = "#p0")
     })
-    public void deleteFridge(Long fridgeId, Long userId) {
-        if (!fridgeMemberRepository.existsByFridgeIdAndUserId(fridgeId, userId)) {
-            throw new IllegalArgumentException("해당 냉장고에 대한 삭제 권한이 없습니다.");
+    public FridgeDeletionResponse deleteFridge(Long fridgeId, Long userId) {
+        FridgeMember requester = fridgeMemberRepository.findByFridgeIdAndUserId(fridgeId, userId)
+                .orElseThrow(() -> new IllegalArgumentException("해당 냉장고에 대한 삭제 권한이 없습니다."));
+
+        // OWNER가 아닌 MEMBER는 냉장고 전체를 삭제할 수 없고, 본인 멤버십만 제거(나가기)한다.
+        if (requester.getRole() != MemberRole.OWNER) {
+            fridgeMemberRepository.delete(requester);
+            return FridgeDeletionResponse.builder().deleted(false).build();
         }
 
+        List<FridgeMember> allMembers = fridgeMemberRepository.findByFridgeId(fridgeId);
+        List<FridgeMember> otherMembers = allMembers.stream()
+                .filter(m -> !m.getUser().getId().equals(userId))
+                .collect(Collectors.toList());
+
+        if (otherMembers.isEmpty()) {
+            performFullDelete(fridgeId);
+            return FridgeDeletionResponse.builder().deleted(true).build();
+        }
+
+        Fridge fridge = fridgeRepository.findById(fridgeId)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 냉장고입니다."));
+        fridge.requestDeletion();
+        otherMembers.forEach(FridgeMember::resetDeletionApproval);
+        otherMembers.forEach(m -> evictFridgesCacheFor(m.getUser().getId()));
+
+        String ownerName = requester.getUser().getName();
+        otherMembers.forEach(m -> pushNotificationService.send(
+                m.getUser().getExpoPushToken(),
+                "냉장고 삭제 요청",
+                ownerName + "님이 '" + fridge.getName() + "' 삭제를 요청했습니다. 확인해주세요.",
+                deletionPushData(fridgeId)
+        ));
+
+        return FridgeDeletionResponse.builder().deleted(false).build();
+    }
+
+    // 공유 중인 멤버 전원이 삭제에 동의하면 그 시점에 실제로 삭제를 실행한다.
+    @Transactional
+    @Caching(evict = {
+        @CacheEvict(value = "fridges", key = "#p1"),
+        @CacheEvict(value = "fridgeLayout", key = "#p0")
+    })
+    public FridgeDeletionResponse approveDeletion(Long fridgeId, Long userId) {
+        Fridge fridge = fridgeRepository.findById(fridgeId)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 냉장고입니다."));
+        if (!fridge.isDeletionRequested()) {
+            throw new IllegalArgumentException("진행 중인 삭제 요청이 없습니다.");
+        }
+
+        FridgeMember requester = fridgeMemberRepository.findByFridgeIdAndUserId(fridgeId, userId)
+                .orElseThrow(() -> new IllegalArgumentException("해당 냉장고에 대한 권한이 없습니다."));
+        if (requester.getRole() == MemberRole.OWNER) {
+            throw new IllegalArgumentException("본인이 요청한 삭제는 동의할 수 없습니다.");
+        }
+
+        requester.approveDeletion();
+
+        List<FridgeMember> allMembers = fridgeMemberRepository.findByFridgeId(fridgeId);
+        boolean allOthersApproved = allMembers.stream()
+                .filter(m -> m.getRole() != MemberRole.OWNER)
+                .allMatch(FridgeMember::isDeletionApproved);
+
+        if (!allOthersApproved) {
+            return FridgeDeletionResponse.builder().deleted(false).build();
+        }
+
+        String fridgeName = fridge.getName();
+        FridgeMember owner = allMembers.stream()
+                .filter(m -> m.getRole() == MemberRole.OWNER)
+                .findFirst()
+                .orElse(null);
+
+        performFullDelete(fridgeId);
+        // 최종 승인으로 실제 삭제가 확정된 시점이므로, 이미 먼저 동의했던 다른 멤버들의 캐시도 함께 비운다.
+        allMembers.forEach(m -> evictFridgesCacheFor(m.getUser().getId()));
+        if (owner != null) {
+            pushNotificationService.send(
+                    owner.getUser().getExpoPushToken(),
+                    "냉장고 삭제 완료",
+                    "'" + fridgeName + "'이 멤버 전원의 동의로 삭제되었습니다.",
+                    deletionPushData(fridgeId)
+            );
+        }
+        return FridgeDeletionResponse.builder().deleted(true).build();
+    }
+
+    // 멤버 중 한 명이라도 거절하면 삭제 요청 자체를 취소한다.
+    @Transactional
+    @CacheEvict(value = "fridges", key = "#p1")
+    public void rejectDeletion(Long fridgeId, Long userId) {
+        FridgeMember requester = fridgeMemberRepository.findByFridgeIdAndUserId(fridgeId, userId)
+                .orElseThrow(() -> new IllegalArgumentException("해당 냉장고에 대한 권한이 없습니다."));
+
+        List<FridgeMember> members = clearDeletionRequestState(fridgeId);
+        FridgeMember owner = members.stream()
+                .filter(m -> m.getRole() == MemberRole.OWNER)
+                .findFirst()
+                .orElse(null);
+        if (owner != null) {
+            pushNotificationService.send(
+                    owner.getUser().getExpoPushToken(),
+                    "냉장고 삭제 요청 거절",
+                    requester.getUser().getName() + "님이 냉장고 삭제 요청을 거절했습니다.",
+                    deletionPushData(fridgeId)
+            );
+        }
+    }
+
+    // 주인은 본인이 보낸 삭제 요청을 언제든 철회할 수 있다.
+    @Transactional
+    @CacheEvict(value = "fridges", key = "#p1")
+    public void cancelDeletionRequest(Long fridgeId, Long userId) {
+        FridgeMember requester = fridgeMemberRepository.findByFridgeIdAndUserId(fridgeId, userId)
+                .orElseThrow(() -> new IllegalArgumentException("해당 냉장고에 대한 권한이 없습니다."));
+        if (requester.getRole() != MemberRole.OWNER) {
+            throw new IllegalArgumentException("삭제 요청은 냉장고 주인만 철회할 수 있습니다.");
+        }
+
+        List<FridgeMember> members = clearDeletionRequestState(fridgeId);
+        String ownerName = requester.getUser().getName();
+        members.stream()
+                .filter(m -> m.getRole() != MemberRole.OWNER)
+                .forEach(m -> pushNotificationService.send(
+                        m.getUser().getExpoPushToken(),
+                        "냉장고 삭제 요청 철회",
+                        ownerName + "님이 삭제 요청을 철회했습니다.",
+                        deletionPushData(fridgeId)
+                ));
+    }
+
+    private Map<String, Object> deletionPushData(Long fridgeId) {
+        return Map.of("type", "fridge_deletion", "fridgeId", fridgeId);
+    }
+
+    // 삭제 요청 상태를 초기화하고, 이후 알림 발송에 쓸 수 있도록 멤버 목록을 반환한다.
+    private List<FridgeMember> clearDeletionRequestState(Long fridgeId) {
+        Fridge fridge = fridgeRepository.findById(fridgeId)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 냉장고입니다."));
+        fridge.cancelDeletionRequest();
+
+        List<FridgeMember> members = fridgeMemberRepository.findByFridgeId(fridgeId);
+        members.forEach(FridgeMember::resetDeletionApproval);
+        members.forEach(m -> evictFridgesCacheFor(m.getUser().getId()));
+        return members;
+    }
+
+    private void performFullDelete(Long fridgeId) {
         List<Ingredient> ingredients = ingredientRepository.findByCompartmentFridgeId(fridgeId);
         ingredientRepository.deleteAll(ingredients);
 
@@ -317,6 +487,7 @@ public class FridgeService {
                     .type(fridge.getType())
                     .role(existingMember.get().getRole())
                     .uuid(fridge.getUuid())
+                    .deletionRequested(fridge.isDeletionRequested())
                     .build();
         }
 
@@ -333,6 +504,7 @@ public class FridgeService {
                 .type(fridge.getType())
                 .role(MemberRole.MEMBER)
                 .uuid(fridge.getUuid())
+                .deletionRequested(fridge.isDeletionRequested())
                 .build();
     }
 }

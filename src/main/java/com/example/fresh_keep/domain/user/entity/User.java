@@ -33,6 +33,9 @@ public class User {
     @Column(unique = true)
     private String backupKey;
 
+    // Expo 푸시 발송 대상 토큰. 기기에서 발급받아 등록하며, 미발급/미동의 시 null.
+    private String expoPushToken;
+
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -46,6 +49,10 @@ public class User {
 
     public void updateName(String name) {
         this.name = name;
+    }
+
+    public void updateExpoPushToken(String expoPushToken) {
+        this.expoPushToken = expoPushToken;
     }
 
     @PrePersist
