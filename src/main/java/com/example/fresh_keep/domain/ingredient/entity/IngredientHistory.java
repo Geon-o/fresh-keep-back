@@ -25,8 +25,11 @@ public class IngredientHistory {
     @Column(name = "ingredient_name", nullable = false)
     private String ingredientName;
 
+    // columnDefinition으로 VARCHAR를 강제한다: MySQL 방언이 STRING 매핑을 네이티브 ENUM 컬럼으로
+    // 만들어버리면 나중에 enum 값을 추가해도 ddl-auto:update가 기존 컬럼의 허용값 목록을 넓혀주지 않아
+    // "Data truncated" 에러가 난다. VARCHAR면 이런 문제 자체가 생기지 않는다.
     @Enumerated(EnumType.STRING)
-    @Column(name = "action_type", nullable = false)
+    @Column(name = "action_type", nullable = false, columnDefinition = "VARCHAR(20)")
     private HistoryActionType actionType;
 
     @Column(name = "actor_user_id")

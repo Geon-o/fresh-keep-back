@@ -19,9 +19,11 @@ import com.example.fresh_keep.domain.fridge.dto.FridgeLayoutResponse;
 import com.example.fresh_keep.domain.fridge.dto.UpdateFridgeRequest;
 import com.example.fresh_keep.domain.fridge.dto.UpdateShelvesRequest;
 import com.example.fresh_keep.domain.ingredient.dto.IngredientDetailResponse;
+import com.example.fresh_keep.domain.ingredient.entity.HistoryActionType;
 import com.example.fresh_keep.domain.ingredient.entity.Ingredient;
 import com.example.fresh_keep.domain.ingredient.enums.ExpirationType;
 import com.example.fresh_keep.domain.ingredient.repository.IngredientRepository;
+import com.example.fresh_keep.domain.ingredient.service.IngredientService;
 import com.example.fresh_keep.global.notification.PushNotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.Cache;
@@ -50,6 +52,7 @@ public class FridgeService {
     private final CompartmentRepository compartmentRepository;
     private final UserRepository userRepository;
     private final IngredientRepository ingredientRepository;
+    private final IngredientService ingredientService;
     private final CacheManager cacheManager;
     private final PushNotificationService pushNotificationService;
 
@@ -212,6 +215,7 @@ public class FridgeService {
 
         FridgeType oldType = fridge.getType();
         FridgeType newType = request.getType();
+        String oldName = fridge.getName();
 
         // 타입 변경은 기존 식재료·구획을 전부 초기화하는 파괴적 작업이라 주인만 할 수 있다 (이름 변경은 멤버도 가능).
         if (oldType != newType && requester.getRole() != MemberRole.OWNER) {
@@ -220,6 +224,16 @@ public class FridgeService {
 
         // 3. 냉장고 이름 및 타입 변경
         fridge.update(request.getName(), newType);
+
+        // 3-1. 이름/타입이 실제로 바뀐 경우에만 기록 이력에 남긴다 (공유 냉장고 설정 화면에서 확인 가능)
+        if (!java.util.Objects.equals(oldName, fridge.getName())) {
+            ingredientService.saveHistory(fridgeId, fridge.getName(), HistoryActionType.NAME_CHANGED, userId,
+                    "이름: " + oldName + " → " + fridge.getName());
+        }
+        if (oldType != newType) {
+            ingredientService.saveHistory(fridgeId, fridge.getName(), HistoryActionType.TYPE_CHANGED, userId,
+                    "타입: " + fridgeTypeLabel(oldType) + " → " + fridgeTypeLabel(newType));
+        }
 
         // 4. 타입이 변경되었다면 기존 내용물(식재료) 및 구획 전부 제거 후 새 구획 생성
         if (oldType != newType) {
@@ -539,5 +553,11 @@ public class FridgeService {
                 .uuid(fridge.getUuid())
                 .deletionRequested(fridge.isDeletionRequested())
                 .build();
+    }
+
+    private String fridgeTypeLabel(FridgeType type) {
+        if (type == FridgeType.SIDE_BY_SIDE) return "양문형";
+        if (type == FridgeType.TWO_DOOR) return "일반 2도어";
+        return "4도어";
     }
 }

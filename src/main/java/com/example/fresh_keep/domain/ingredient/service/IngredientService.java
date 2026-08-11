@@ -188,10 +188,13 @@ public class IngredientService {
         return userRepository.findById(userId).map(User::getName).orElse(null);
     }
 
-    private void saveHistory(Long fridgeId, String ingredientName, HistoryActionType actionType, Long actorUserId, String summary) {
+    // 식재료 등록/수정뿐 아니라 냉장고 이름·타입 변경(FridgeService)에서도 재사용한다.
+    // 클래스 기본이 readOnly라 외부(FridgeService)에서 호출할 때도 쓰기 트랜잭션이 되도록 명시한다.
+    @Transactional
+    public void saveHistory(Long fridgeId, String subjectName, HistoryActionType actionType, Long actorUserId, String summary) {
         IngredientHistory history = IngredientHistory.builder()
                 .fridgeId(fridgeId)
-                .ingredientName(ingredientName)
+                .ingredientName(subjectName)
                 .actionType(actionType)
                 .actorUserId(actorUserId)
                 .actorName(resolveUserName(actorUserId))
