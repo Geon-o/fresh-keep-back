@@ -44,6 +44,14 @@ public class Ingredient {
 
     private String memo;
 
+    // 등록/최종 수정한 사용자. updatedBy는 실제로 수정된 적이 있을 때만 채워진다
+    // (생성 시점엔 null로 두어 "수정 이력 없음"과 구분한다).
+    @Column(name = "created_by")
+    private Long createdBy;
+
+    @Column(name = "updated_by")
+    private Long updatedBy;
+
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -51,13 +59,14 @@ public class Ingredient {
         this.compartment = compartment;
     }
 
-    public void update(String name, Double quantity, String unit, LocalDate expirationDate, ExpirationType expirationType, String memo) {
+    public void update(String name, Double quantity, String unit, LocalDate expirationDate, ExpirationType expirationType, String memo, Long updatedBy) {
         this.name = name;
         this.quantity = quantity;
         this.unit = unit;
         this.expirationDate = expirationDate;
         this.expirationType = expirationType;
         this.memo = memo;
+        this.updatedBy = updatedBy;
     }
 
     @PrePersist

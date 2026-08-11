@@ -7,6 +7,8 @@ import com.example.fresh_keep.domain.fridge.dto.UpdateFridgeRequest;
 import com.example.fresh_keep.domain.fridge.dto.UpdateShelvesRequest;
 import com.example.fresh_keep.domain.fridge.service.FridgeService;
 import com.example.fresh_keep.domain.fridge.dto.FridgeLayoutResponse;
+import com.example.fresh_keep.domain.ingredient.dto.IngredientHistoryResponse;
+import com.example.fresh_keep.domain.ingredient.service.IngredientService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -30,6 +32,7 @@ import java.util.List;
 public class FridgeController {
 
     private final FridgeService fridgeService;
+    private final IngredientService ingredientService;
 
     @PostMapping
     public ResponseEntity<FridgeResponse> createFridge(
@@ -66,6 +69,19 @@ public class FridgeController {
         }
 
         FridgeLayoutResponse response = fridgeService.getFridgeLayout(fridgeId, userId);
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/{fridgeId}/history")
+    public ResponseEntity<List<IngredientHistoryResponse>> getIngredientHistory(
+            @PathVariable("fridgeId") Long fridgeId,
+            @AuthenticationPrincipal Object principal) {
+
+        if (!(principal instanceof Long userId)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        List<IngredientHistoryResponse> response = ingredientService.getHistory(fridgeId, userId);
         return ResponseEntity.ok(response);
     }
 
