@@ -5,10 +5,16 @@ import com.example.fresh_keep.domain.fridge.repository.CompartmentRepository;
 import com.example.fresh_keep.domain.fridge.repository.FridgeMemberRepository;
 import com.example.fresh_keep.domain.ingredient.dto.AddIngredientRequest;
 import com.example.fresh_keep.domain.ingredient.dto.IngredientDetailResponse;
+import com.example.fresh_keep.domain.ingredient.dto.IngredientHistoryResponse;
 import com.example.fresh_keep.domain.ingredient.dto.UpdateIngredientRequest;
+import com.example.fresh_keep.domain.ingredient.entity.HistoryActionType;
 import com.example.fresh_keep.domain.ingredient.entity.Ingredient;
+import com.example.fresh_keep.domain.ingredient.entity.IngredientHistory;
 import com.example.fresh_keep.domain.ingredient.enums.ExpirationType;
+import com.example.fresh_keep.domain.ingredient.repository.IngredientHistoryRepository;
 import com.example.fresh_keep.domain.ingredient.repository.IngredientRepository;
+import com.example.fresh_keep.domain.user.entity.User;
+import com.example.fresh_keep.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
@@ -17,6 +23,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -24,8 +34,10 @@ import java.time.temporal.ChronoUnit;
 public class IngredientService {
 
     private final IngredientRepository ingredientRepository;
+    private final IngredientHistoryRepository ingredientHistoryRepository;
     private final CompartmentRepository compartmentRepository;
     private final FridgeMemberRepository fridgeMemberRepository;
+    private final UserRepository userRepository;
     private final CacheManager cacheManager;
 
     @Transactional
@@ -49,10 +61,14 @@ public class IngredientService {
                 .expirationDate(request.getExpirationDate())
                 .expirationType(request.getExpirationType())
                 .memo(request.getMemo())
+                .createdBy(userId)
                 .build();
         ingredientRepository.save(ingredient);
 
-        // 4. 캐시 무효화
+        // 4. 이력 기록
+        saveHistory(fridgeId, ingredient.getName(), HistoryActionType.CREATED, userId, null);
+
+        // 5. 캐시 무효화
         evictLayoutCache(fridgeId);
 
         return mapToResponse(ingredient);
@@ -70,7 +86,15 @@ public class IngredientService {
             throw new IllegalArgumentException("해당 식재료를 수정할 권한이 없습니다.");
         }
 
-        // 3. 식재료 필드 업데이트
+        // 3. 이력 요약을 위해 변경 전 값을 먼저 확보
+        String oldName = ingredient.getName();
+        Double oldQuantity = ingredient.getQuantity();
+        String oldUnit = ingredient.getUnit();
+        LocalDate oldExpirationDate = ingredient.getExpirationDate();
+        String oldMemo = ingredient.getMemo();
+        Compartment oldCompartment = ingredient.getCompartment();
+
+        // 4. 식재료 필드 업데이트
         String newName = request.getName() != null ? request.getName() : ingredient.getName();
         Double newQuantity = request.getQuantity() != null ? request.getQuantity() : ingredient.getQuantity();
         String newUnit = request.getUnit() != null ? request.getUnit() : ingredient.getUnit();
@@ -78,24 +102,34 @@ public class IngredientService {
         ExpirationType newExpirationType = request.getExpirationType() != null ? request.getExpirationType() : ingredient.getExpirationType();
         String newMemo = request.getMemo() != null ? request.getMemo() : ingredient.getMemo();
 
-        ingredient.update(newName, newQuantity, newUnit, newExpirationDate, newExpirationType, newMemo);
+        ingredient.update(newName, newQuantity, newUnit, newExpirationDate, newExpirationType, newMemo, userId);
 
         // 구획 이동 처리
         if (request.getCompartmentId() != null) {
             Compartment newCompartment = compartmentRepository.findById(request.getCompartmentId())
                     .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 보관 구획입니다."));
-            
+
             // 이동할 구획이 동일한 냉장고 내의 구획인지 검증
             if (!newCompartment.getFridge().getId().equals(fridgeId)) {
                 throw new IllegalArgumentException("동일한 냉장고 내의 구획으로만 이동할 수 있습니다.");
             }
-            
+
             ingredient.updateCompartment(newCompartment);
         }
 
         ingredientRepository.save(ingredient);
 
-        // 4. 캐시 무효화
+        // 5. 이력 기록
+        String summary = buildUpdateSummary(
+                oldName, newName,
+                oldQuantity, oldUnit, newQuantity, newUnit,
+                oldExpirationDate, newExpirationDate,
+                oldMemo, newMemo,
+                oldCompartment, ingredient.getCompartment()
+        );
+        saveHistory(fridgeId, newName, HistoryActionType.UPDATED, userId, summary);
+
+        // 6. 캐시 무효화
         evictLayoutCache(fridgeId);
 
         return mapToResponse(ingredient);
@@ -130,6 +164,9 @@ public class IngredientService {
 
     private IngredientDetailResponse mapToResponse(Ingredient ingredient) {
         LocalDate now = LocalDate.now();
+        String createdByName = resolveUserName(ingredient.getCreatedBy());
+        String updatedByName = ingredient.getUpdatedBy() != null ? resolveUserName(ingredient.getUpdatedBy()) : null;
+
         return IngredientDetailResponse.builder()
                 .id(ingredient.getId())
                 .name(ingredient.getName())
@@ -139,6 +176,78 @@ public class IngredientService {
                 .expirationType(ingredient.getExpirationType() != null ? ingredient.getExpirationType() : ExpirationType.SELL_BY)
                 .dday(ChronoUnit.DAYS.between(now, ingredient.getExpirationDate()))
                 .memo(ingredient.getMemo())
+                .createdByName(createdByName)
+                .createdAt(ingredient.getCreatedAt())
+                .updatedByName(updatedByName)
+                .updatedAt(ingredient.getUpdatedBy() != null ? ingredient.getUpdatedAt() : null)
                 .build();
+    }
+
+    private String resolveUserName(Long userId) {
+        if (userId == null) return null;
+        return userRepository.findById(userId).map(User::getName).orElse(null);
+    }
+
+    private void saveHistory(Long fridgeId, String ingredientName, HistoryActionType actionType, Long actorUserId, String summary) {
+        IngredientHistory history = IngredientHistory.builder()
+                .fridgeId(fridgeId)
+                .ingredientName(ingredientName)
+                .actionType(actionType)
+                .actorUserId(actorUserId)
+                .actorName(resolveUserName(actorUserId))
+                .summary(summary)
+                .build();
+        ingredientHistoryRepository.save(history);
+    }
+
+    // "필드: 이전값 → 새값" 형식으로 바뀐 항목만 모아 요약 문자열을 만든다. 바뀐 게 없으면 null.
+    private String buildUpdateSummary(
+            String oldName, String newName,
+            Double oldQuantity, String oldUnit, Double newQuantity, String newUnit,
+            LocalDate oldExpirationDate, LocalDate newExpirationDate,
+            String oldMemo, String newMemo,
+            Compartment oldCompartment, Compartment newCompartment
+    ) {
+        List<String> changes = new ArrayList<>();
+
+        if (!Objects.equals(oldName, newName)) {
+            changes.add("이름: " + oldName + " → " + newName);
+        }
+        if (!Objects.equals(oldQuantity, newQuantity) || !Objects.equals(oldUnit, newUnit)) {
+            changes.add("수량: " + formatQuantity(oldQuantity, oldUnit) + " → " + formatQuantity(newQuantity, newUnit));
+        }
+        if (!Objects.equals(oldExpirationDate, newExpirationDate)) {
+            changes.add("유통기한: " + oldExpirationDate + " → " + newExpirationDate);
+        }
+        if (!Objects.equals(oldMemo, newMemo)) {
+            changes.add("메모: " + (oldMemo == null || oldMemo.isBlank() ? "(없음)" : oldMemo)
+                    + " → " + (newMemo == null || newMemo.isBlank() ? "(없음)" : newMemo));
+        }
+        if (oldCompartment != null && newCompartment != null && !Objects.equals(oldCompartment.getId(), newCompartment.getId())) {
+            changes.add("위치: " + oldCompartment.getName() + " → " + newCompartment.getName());
+        }
+
+        return changes.isEmpty() ? null : String.join(", ", changes);
+    }
+
+    private String formatQuantity(Double quantity, String unit) {
+        return quantity + (unit != null ? unit : "");
+    }
+
+    public List<IngredientHistoryResponse> getHistory(Long fridgeId, Long userId) {
+        if (!fridgeMemberRepository.existsByFridgeIdAndUserId(fridgeId, userId)) {
+            throw new IllegalArgumentException("해당 냉장고에 대한 접근 권한이 없습니다.");
+        }
+
+        return ingredientHistoryRepository.findTop200ByFridgeIdOrderByCreatedAtDesc(fridgeId).stream()
+                .map(h -> IngredientHistoryResponse.builder()
+                        .id(h.getId())
+                        .actionType(h.getActionType())
+                        .ingredientName(h.getIngredientName())
+                        .actorName(h.getActorName())
+                        .summary(h.getSummary())
+                        .occurredAt(h.getCreatedAt())
+                        .build())
+                .collect(Collectors.toList());
     }
 }

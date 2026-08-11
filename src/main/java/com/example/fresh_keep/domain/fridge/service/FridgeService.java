@@ -143,6 +143,15 @@ public class FridgeService {
         Map<Long, List<Ingredient>> ingredientsByCompartment = ingredients.stream()
                 .collect(Collectors.groupingBy(ing -> ing.getCompartment().getId()));
 
+        // 등록/수정자 이름을 N+1 쿼리 없이 한 번에 조회하기 위한 userId -> 이름 매핑
+        List<Long> userIds = ingredients.stream()
+                .flatMap(ing -> java.util.stream.Stream.of(ing.getCreatedBy(), ing.getUpdatedBy()))
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .collect(Collectors.toList());
+        Map<Long, String> userNamesById = userRepository.findAllById(userIds).stream()
+                .collect(Collectors.toMap(User::getId, User::getName));
+
         LocalDate now = LocalDate.now();
 
         // 4. 구획별 상세 DTO 매핑
@@ -159,6 +168,10 @@ public class FridgeService {
                                     .expirationType(ing.getExpirationType() != null ? ing.getExpirationType() : ExpirationType.SELL_BY)
                                     .dday(ChronoUnit.DAYS.between(now, ing.getExpirationDate()))
                                     .memo(ing.getMemo())
+                                    .createdByName(userNamesById.get(ing.getCreatedBy()))
+                                    .createdAt(ing.getCreatedAt())
+                                    .updatedByName(ing.getUpdatedBy() != null ? userNamesById.get(ing.getUpdatedBy()) : null)
+                                    .updatedAt(ing.getUpdatedBy() != null ? ing.getUpdatedAt() : null)
                                     .build())
                             .collect(Collectors.toList());
 
