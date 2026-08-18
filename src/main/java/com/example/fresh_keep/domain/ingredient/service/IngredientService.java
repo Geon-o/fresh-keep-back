@@ -15,6 +15,8 @@ import com.example.fresh_keep.domain.ingredient.repository.IngredientHistoryRepo
 import com.example.fresh_keep.domain.ingredient.repository.IngredientRepository;
 import com.example.fresh_keep.domain.user.entity.User;
 import com.example.fresh_keep.domain.user.repository.UserRepository;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
@@ -25,6 +27,7 @@ import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
@@ -39,6 +42,21 @@ public class IngredientService {
     private final FridgeMemberRepository fridgeMemberRepository;
     private final UserRepository userRepository;
     private final CacheManager cacheManager;
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    // 프론트엔드 CompartmentDetail.tsx의 CATEGORIES와 동일한 매핑 (이력 요약을 한글로 보여주기 위함)
+    private static final Map<String, String> CATEGORY_LABELS = Map.ofEntries(
+            Map.entry("vegetable", "채소"),
+            Map.entry("meat", "육류"),
+            Map.entry("seafood", "해물"),
+            Map.entry("dairy", "유제품"),
+            Map.entry("fruit", "과일"),
+            Map.entry("frozen", "냉동식품"),
+            Map.entry("bakery", "빵류"),
+            Map.entry("drink", "음료"),
+            Map.entry("sauce", "소스/조미료"),
+            Map.entry("etc", "기타")
+    );
 
     @Transactional
     public IngredientDetailResponse addIngredient(AddIngredientRequest request, Long userId) {
@@ -223,14 +241,94 @@ public class IngredientService {
             changes.add("유통기한: " + oldExpirationDate + " → " + newExpirationDate);
         }
         if (!Objects.equals(oldMemo, newMemo)) {
-            changes.add("메모: " + (oldMemo == null || oldMemo.isBlank() ? "(없음)" : oldMemo)
-                    + " → " + (newMemo == null || newMemo.isBlank() ? "(없음)" : newMemo));
+            // 프론트엔드가 category/subLocation/memo를 memo 필드에 JSON으로 얹어 보내므로,
+            // 파싱이 되면 필드별로 사람이 읽을 수 있게 나누고, 안 되면(레거시 평문 메모) 통째로 보여준다.
+            JsonNode oldPayload = parseMemoPayload(oldMemo);
+            JsonNode newPayload = parseMemoPayload(newMemo);
+
+            if (oldPayload != null && newPayload != null) {
+                String oldCategory = oldPayload.path("category").asText(null);
+                String newCategory = newPayload.path("category").asText(null);
+                if (!Objects.equals(oldCategory, newCategory)) {
+                    changes.add("카테고리: " + resolveCategoryLabel(oldCategory) + " → " + resolveCategoryLabel(newCategory));
+                }
+
+                String oldSubLocation = oldPayload.path("subLocation").asText(null);
+                String newSubLocation = newPayload.path("subLocation").asText(null);
+                if (!Objects.equals(oldSubLocation, newSubLocation)) {
+                    Compartment shelfLookupCompartment = newCompartment != null ? newCompartment : oldCompartment;
+                    changes.add("보관 위치: " + resolveShelfLabel(shelfLookupCompartment, oldSubLocation)
+                            + " → " + resolveShelfLabel(shelfLookupCompartment, newSubLocation));
+                }
+
+                String oldFreeMemo = oldPayload.path("memo").asText("");
+                String newFreeMemo = newPayload.path("memo").asText("");
+                if (!Objects.equals(oldFreeMemo, newFreeMemo)) {
+                    changes.add("메모: " + (oldFreeMemo.isBlank() ? "(없음)" : oldFreeMemo)
+                            + " → " + (newFreeMemo.isBlank() ? "(없음)" : newFreeMemo));
+                }
+            } else {
+                changes.add("메모: " + (oldMemo == null || oldMemo.isBlank() ? "(없음)" : oldMemo)
+                        + " → " + (newMemo == null || newMemo.isBlank() ? "(없음)" : newMemo));
+            }
         }
         if (oldCompartment != null && newCompartment != null && !Objects.equals(oldCompartment.getId(), newCompartment.getId())) {
             changes.add("위치: " + oldCompartment.getName() + " → " + newCompartment.getName());
         }
 
         return changes.isEmpty() ? null : String.join(", ", changes);
+    }
+
+    // memo 필드가 프론트엔드의 {category, subLocation, memo} JSON 형식인 경우에만 파싱해서 반환, 아니면 null
+    private JsonNode parseMemoPayload(String memo) {
+        if (memo == null || memo.isBlank()) {
+            return null;
+        }
+        try {
+            JsonNode node = objectMapper.readTree(memo);
+            return (node.has("category") || node.has("subLocation")) ? node : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private String resolveCategoryLabel(String category) {
+        if (category == null) {
+            return "(없음)";
+        }
+        return CATEGORY_LABELS.getOrDefault(category, category);
+    }
+
+    // 구획의 insideShelves/doorShelves JSON({id, label} 배열)에서 선반 ID에 해당하는 라벨을 찾는다
+    private String resolveShelfLabel(Compartment compartment, String shelfId) {
+        if (shelfId == null) {
+            return "(없음)";
+        }
+        if (compartment == null) {
+            return shelfId;
+        }
+        String label = findShelfLabel(compartment.getInsideShelves(), shelfId);
+        if (label == null) {
+            label = findShelfLabel(compartment.getDoorShelves(), shelfId);
+        }
+        return label != null ? label : shelfId;
+    }
+
+    private String findShelfLabel(String shelvesJson, String shelfId) {
+        if (shelvesJson == null) {
+            return null;
+        }
+        try {
+            JsonNode shelves = objectMapper.readTree(shelvesJson);
+            for (JsonNode shelf : shelves) {
+                if (shelfId.equals(shelf.path("id").asText())) {
+                    return shelf.path("label").asText(shelfId);
+                }
+            }
+        } catch (Exception e) {
+            // 파싱 실패 시 raw id로 폴백
+        }
+        return null;
     }
 
     private String formatQuantity(Double quantity, String unit) {
