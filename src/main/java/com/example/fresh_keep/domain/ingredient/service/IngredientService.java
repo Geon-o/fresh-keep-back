@@ -137,7 +137,7 @@ public class IngredientService {
 
         ingredientRepository.save(ingredient);
 
-        // 5. 이력 기록
+        // 5. 이력 기록 (실제로 바뀐 값이 있을 때만 기록 — 변경 없이 저장만 누른 경우 빈 이력 row를 남기지 않는다)
         String summary = buildUpdateSummary(
                 oldName, newName,
                 oldQuantity, oldUnit, newQuantity, newUnit,
@@ -145,7 +145,9 @@ public class IngredientService {
                 oldMemo, newMemo,
                 oldCompartment, ingredient.getCompartment()
         );
-        saveHistory(fridgeId, newName, HistoryActionType.UPDATED, userId, summary);
+        if (summary != null) {
+            saveHistory(fridgeId, newName, HistoryActionType.UPDATED, userId, summary);
+        }
 
         // 6. 캐시 무효화
         evictLayoutCache(fridgeId);
@@ -182,8 +184,17 @@ public class IngredientService {
 
     private IngredientDetailResponse mapToResponse(Ingredient ingredient) {
         LocalDate now = LocalDate.now();
-        String createdByName = resolveUserName(ingredient.getCreatedBy());
-        String updatedByName = ingredient.getUpdatedBy() != null ? resolveUserName(ingredient.getUpdatedBy()) : null;
+
+        // createdBy/updatedBy가 같은 사용자인 경우가 많아, 별도 쿼리 두 번 대신 한 번에 배치 조회한다.
+        List<Long> userIds = java.util.stream.Stream.of(ingredient.getCreatedBy(), ingredient.getUpdatedBy())
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .collect(Collectors.toList());
+        Map<Long, String> userNamesById = userRepository.findAllById(userIds).stream()
+                .collect(Collectors.toMap(User::getId, User::getName));
+
+        String createdByName = userNamesById.get(ingredient.getCreatedBy());
+        String updatedByName = ingredient.getUpdatedBy() != null ? userNamesById.get(ingredient.getUpdatedBy()) : null;
 
         return IngredientDetailResponse.builder()
                 .id(ingredient.getId())
