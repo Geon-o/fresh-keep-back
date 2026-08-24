@@ -60,12 +60,18 @@ public class IngredientService {
 
     @Transactional
     public IngredientDetailResponse addIngredient(AddIngredientRequest request, Long userId) {
-        // 1. 구획 조회
-        Compartment compartment = compartmentRepository.findById(request.getCompartmentId())
-                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 보관 구획입니다."));
+        // 1. 구획 조회 (없으면 "위치 미정" 등록)
+        Compartment compartment = null;
+        Long fridgeId = request.getFridgeId();
+        if (request.getCompartmentId() != null) {
+            compartment = compartmentRepository.findById(request.getCompartmentId())
+                    .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 보관 구획입니다."));
+            if (!compartment.getFridge().getId().equals(fridgeId)) {
+                throw new IllegalArgumentException("지정한 구획이 해당 냉장고 소속이 아닙니다.");
+            }
+        }
 
-        // 2. 권한 검증 (해당 구획의 냉장고의 멤버인지)
-        Long fridgeId = compartment.getFridge().getId();
+        // 2. 권한 검증 (해당 냉장고의 멤버인지)
         if (!fridgeMemberRepository.existsByFridgeIdAndUserId(fridgeId, userId)) {
             throw new IllegalArgumentException("해당 냉장고에 식재료를 추가할 권한이 없습니다.");
         }
@@ -73,6 +79,7 @@ public class IngredientService {
         // 3. 식재료 생성 및 저장
         Ingredient ingredient = Ingredient.builder()
                 .compartment(compartment)
+                .fridgeId(fridgeId)
                 .name(request.getName())
                 .quantity(request.getQuantity())
                 .unit(request.getUnit())
@@ -99,7 +106,7 @@ public class IngredientService {
                 .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 식재료입니다."));
 
         // 2. 권한 검증
-        Long fridgeId = ingredient.getCompartment().getFridge().getId();
+        Long fridgeId = ingredient.getFridgeId();
         if (!fridgeMemberRepository.existsByFridgeIdAndUserId(fridgeId, userId)) {
             throw new IllegalArgumentException("해당 식재료를 수정할 권한이 없습니다.");
         }
@@ -162,7 +169,7 @@ public class IngredientService {
                 .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 식재료입니다."));
 
         // 2. 권한 검증
-        Long fridgeId = ingredient.getCompartment().getFridge().getId();
+        Long fridgeId = ingredient.getFridgeId();
         if (!fridgeMemberRepository.existsByFridgeIdAndUserId(fridgeId, userId)) {
             throw new IllegalArgumentException("해당 식재료를 삭제할 권한이 없습니다.");
         }

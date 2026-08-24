@@ -13,7 +13,10 @@ import java.time.LocalDate;
 @Setter
 @NoArgsConstructor
 public class AddIngredientRequest {
-    @NotNull(message = "구획 ID는 필수입니다.")
+    @NotNull(message = "냉장고 ID는 필수입니다.")
+    private Long fridgeId;
+
+    // 없으면 "위치 미정" 상태로 등록되고, 나중에 수정(PATCH)으로 구획을 지정할 수 있다.
     private Long compartmentId;
 
     @NotBlank(message = "식재료 이름은 필수입니다.")
