@@ -20,9 +20,15 @@ public class Ingredient {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    // 위치(구획) 미지정 등록을 허용하기 위해 nullable. 구획이 없어도 어느 냉장고 소속인지는
+    // 알아야 권한 검증/목록 조회가 가능하므로 fridgeId를 별도 컬럼으로 직접 들고 있는다
+    // (IngredientHistory의 fridgeId 컬럼과 동일한 패턴).
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "compartment_id", nullable = false)
+    @JoinColumn(name = "compartment_id", nullable = true)
     private Compartment compartment;
+
+    @Column(name = "fridge_id", nullable = false)
+    private Long fridgeId;
 
     @Column(nullable = false)
     private String name;

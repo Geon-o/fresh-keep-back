@@ -141,9 +141,10 @@ public class FridgeService {
                 .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 냉장고입니다."));
         List<Compartment> compartments = compartmentRepository.findByFridgeIdOrderBySequenceOrderAsc(fridgeId);
 
-        // 3. 식재료 일괄 조회 및 구획별 그룹화
-        List<Ingredient> ingredients = ingredientRepository.findByCompartmentFridgeId(fridgeId);
+        // 3. 식재료 일괄 조회 및 구획별 그룹화 (구획 미지정 식재료는 별도로 뺀다)
+        List<Ingredient> ingredients = ingredientRepository.findByFridgeId(fridgeId);
         Map<Long, List<Ingredient>> ingredientsByCompartment = ingredients.stream()
+                .filter(ing -> ing.getCompartment() != null)
                 .collect(Collectors.groupingBy(ing -> ing.getCompartment().getId()));
 
         // 등록/수정자 이름을 N+1 쿼리 없이 한 번에 조회하기 위한 userId -> 이름 매핑
@@ -162,20 +163,7 @@ public class FridgeService {
                 .map(comp -> {
                     List<Ingredient> compIngredients = ingredientsByCompartment.getOrDefault(comp.getId(), new ArrayList<>());
                     List<IngredientDetailResponse> ingredientResponses = compIngredients.stream()
-                            .map(ing -> IngredientDetailResponse.builder()
-                                    .id(ing.getId())
-                                    .name(ing.getName())
-                                    .quantity(ing.getQuantity())
-                                    .unit(ing.getUnit())
-                                    .expirationDate(ing.getExpirationDate())
-                                    .expirationType(ing.getExpirationType() != null ? ing.getExpirationType() : ExpirationType.SELL_BY)
-                                    .dday(ChronoUnit.DAYS.between(now, ing.getExpirationDate()))
-                                    .memo(ing.getMemo())
-                                    .createdByName(userNamesById.get(ing.getCreatedBy()))
-                                    .createdAt(ing.getCreatedAt())
-                                    .updatedByName(ing.getUpdatedBy() != null ? userNamesById.get(ing.getUpdatedBy()) : null)
-                                    .updatedAt(ing.getUpdatedBy() != null ? ing.getUpdatedAt() : null)
-                                    .build())
+                            .map(ing -> mapIngredientDetail(ing, userNamesById, now))
                             .collect(Collectors.toList());
 
                     return CompartmentDetailResponse.builder()
@@ -191,11 +179,35 @@ public class FridgeService {
                 })
                 .collect(Collectors.toList());
 
+        // 5. 구획 미지정("위치 미정") 식재료 매핑
+        List<IngredientDetailResponse> unassignedIngredients = ingredients.stream()
+                .filter(ing -> ing.getCompartment() == null)
+                .map(ing -> mapIngredientDetail(ing, userNamesById, now))
+                .collect(Collectors.toList());
+
         return FridgeLayoutResponse.builder()
                 .fridgeId(fridge.getId())
                 .fridgeName(fridge.getName())
                 .type(fridge.getType())
                 .compartments(compartmentResponses)
+                .unassignedIngredients(unassignedIngredients)
+                .build();
+    }
+
+    private IngredientDetailResponse mapIngredientDetail(Ingredient ing, Map<Long, String> userNamesById, LocalDate now) {
+        return IngredientDetailResponse.builder()
+                .id(ing.getId())
+                .name(ing.getName())
+                .quantity(ing.getQuantity())
+                .unit(ing.getUnit())
+                .expirationDate(ing.getExpirationDate())
+                .expirationType(ing.getExpirationType() != null ? ing.getExpirationType() : ExpirationType.SELL_BY)
+                .dday(ChronoUnit.DAYS.between(now, ing.getExpirationDate()))
+                .memo(ing.getMemo())
+                .createdByName(userNamesById.get(ing.getCreatedBy()))
+                .createdAt(ing.getCreatedAt())
+                .updatedByName(ing.getUpdatedBy() != null ? userNamesById.get(ing.getUpdatedBy()) : null)
+                .updatedAt(ing.getUpdatedBy() != null ? ing.getUpdatedAt() : null)
                 .build();
     }
 
@@ -238,7 +250,7 @@ public class FridgeService {
         // 4. 타입이 변경되었다면 기존 내용물(식재료) 및 구획 전부 제거 후 새 구획 생성
         if (oldType != newType) {
             // 기존 식재료 전부 제거
-            List<Ingredient> ingredients = ingredientRepository.findByCompartmentFridgeId(fridgeId);
+            List<Ingredient> ingredients = ingredientRepository.findByFridgeId(fridgeId);
             ingredientRepository.deleteAll(ingredients);
 
             // 기존 구획 전부 제거
@@ -418,7 +430,7 @@ public class FridgeService {
     }
 
     private void performFullDelete(Long fridgeId) {
-        List<Ingredient> ingredients = ingredientRepository.findByCompartmentFridgeId(fridgeId);
+        List<Ingredient> ingredients = ingredientRepository.findByFridgeId(fridgeId);
         ingredientRepository.deleteAll(ingredients);
 
         List<Compartment> compartments = compartmentRepository.findByFridgeIdOrderBySequenceOrderAsc(fridgeId);

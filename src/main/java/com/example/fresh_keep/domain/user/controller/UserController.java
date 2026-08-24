@@ -123,7 +123,7 @@ public class UserController {
             Fridge fridge = member.getFridge();
             if (member.getRole() == MemberRole.OWNER) {
                 // 2. 소유주인 경우 냉장고와 연관 데이터 완전 삭제
-                List<Ingredient> ingredients = ingredientRepository.findByCompartmentFridgeId(fridge.getId());
+                List<Ingredient> ingredients = ingredientRepository.findByFridgeId(fridge.getId());
                 ingredientRepository.deleteAll(ingredients);
 
                 List<Compartment> compartments = compartmentRepository.findByFridgeIdOrderBySequenceOrderAsc(fridge.getId());
