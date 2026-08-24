@@ -91,7 +91,8 @@ public class IngredientService {
         ingredientRepository.save(ingredient);
 
         // 4. 이력 기록
-        saveHistory(fridgeId, ingredient.getName(), HistoryActionType.CREATED, userId, null);
+        saveHistory(fridgeId, ingredient.getName(), HistoryActionType.CREATED, userId,
+                withEulReul(ingredient.getName()) + " 등록했어요.");
 
         // 5. 캐시 무효화
         evictLayoutCache(fridgeId);
@@ -176,7 +177,11 @@ public class IngredientService {
 
         ingredientRepository.delete(ingredient);
 
-        // 3. 캐시 무효화
+        // 3. 이력 기록 (삭제 후에는 이름을 조회할 수 없으므로 미리 확보해둔 값을 스냅샷으로 남긴다)
+        saveHistory(fridgeId, ingredient.getName(), HistoryActionType.DELETED, userId,
+                withEulReul(ingredient.getName()) + " 삭제했어요.");
+
+        // 4. 캐시 무효화
         evictLayoutCache(fridgeId);
     }
 
@@ -239,7 +244,7 @@ public class IngredientService {
         ingredientHistoryRepository.save(history);
     }
 
-    // "필드: 이전값 → 새값" 형식으로 바뀐 항목만 모아 요약 문자열을 만든다. 바뀐 게 없으면 null.
+    // 바뀐 필드마다 자연스러운 한국어 문장을 하나씩 만들어 줄바꿈으로 모은다. 바뀐 게 없으면 null.
     private String buildUpdateSummary(
             String oldName, String newName,
             Double oldQuantity, String oldUnit, Double newQuantity, String newUnit,
@@ -248,15 +253,18 @@ public class IngredientService {
             Compartment oldCompartment, Compartment newCompartment
     ) {
         List<String> changes = new ArrayList<>();
+        // 이름이 막 바뀐 경우엔 새 이름을, 아니면 원래 이름을 문장의 주어로 쓴다.
+        String subject = newName != null ? newName : oldName;
 
         if (!Objects.equals(oldName, newName)) {
-            changes.add("이름: " + oldName + " → " + newName);
+            changes.add(withEulReul(oldName) + " " + withEuroRo(newName) + " 변경했어요.");
         }
         if (!Objects.equals(oldQuantity, newQuantity) || !Objects.equals(oldUnit, newUnit)) {
-            changes.add("수량: " + formatQuantity(oldQuantity, oldUnit) + " → " + formatQuantity(newQuantity, newUnit));
+            String newQtyText = formatQuantity(newQuantity, newUnit);
+            changes.add(subject + "의 갯수를 " + formatQuantity(oldQuantity, oldUnit) + "에서 " + withEuroRo(newQtyText) + " 변경했어요.");
         }
         if (!Objects.equals(oldExpirationDate, newExpirationDate)) {
-            changes.add("유통기한: " + oldExpirationDate + " → " + newExpirationDate);
+            changes.add(subject + "의 유통기한을 " + oldExpirationDate + "에서 " + withEuroRo(String.valueOf(newExpirationDate)) + " 변경했어요.");
         }
         if (!Objects.equals(oldMemo, newMemo)) {
             // 프론트엔드가 category/subLocation/memo를 memo 필드에 JSON으로 얹어 보내므로,
@@ -268,33 +276,64 @@ public class IngredientService {
                 String oldCategory = oldPayload.path("category").asText(null);
                 String newCategory = newPayload.path("category").asText(null);
                 if (!Objects.equals(oldCategory, newCategory)) {
-                    changes.add("카테고리: " + resolveCategoryLabel(oldCategory) + " → " + resolveCategoryLabel(newCategory));
+                    changes.add(subject + "의 카테고리를 " + resolveCategoryLabel(oldCategory)
+                            + "에서 " + withEuroRo(resolveCategoryLabel(newCategory)) + " 변경했어요.");
                 }
 
                 String oldSubLocation = oldPayload.path("subLocation").asText(null);
                 String newSubLocation = newPayload.path("subLocation").asText(null);
                 if (!Objects.equals(oldSubLocation, newSubLocation)) {
                     Compartment shelfLookupCompartment = newCompartment != null ? newCompartment : oldCompartment;
-                    changes.add("보관 위치: " + resolveShelfLabel(shelfLookupCompartment, oldSubLocation)
-                            + " → " + resolveShelfLabel(shelfLookupCompartment, newSubLocation));
+                    String newShelfLabel = resolveShelfLabel(shelfLookupCompartment, newSubLocation);
+                    changes.add(subject + "의 보관 위치를 " + resolveShelfLabel(shelfLookupCompartment, oldSubLocation)
+                            + "에서 " + withEuroRo(newShelfLabel) + " 이동시켰어요.");
                 }
 
                 String oldFreeMemo = oldPayload.path("memo").asText("");
                 String newFreeMemo = newPayload.path("memo").asText("");
                 if (!Objects.equals(oldFreeMemo, newFreeMemo)) {
-                    changes.add("메모: " + (oldFreeMemo.isBlank() ? "(없음)" : oldFreeMemo)
-                            + " → " + (newFreeMemo.isBlank() ? "(없음)" : newFreeMemo));
+                    String newMemoText = newFreeMemo.isBlank() ? "(없음)" : newFreeMemo;
+                    changes.add(subject + "의 메모를 " + (oldFreeMemo.isBlank() ? "(없음)" : oldFreeMemo)
+                            + "에서 " + withEuroRo(newMemoText) + " 변경했어요.");
                 }
             } else {
-                changes.add("메모: " + (oldMemo == null || oldMemo.isBlank() ? "(없음)" : oldMemo)
-                        + " → " + (newMemo == null || newMemo.isBlank() ? "(없음)" : newMemo));
+                String newMemoText = (newMemo == null || newMemo.isBlank()) ? "(없음)" : newMemo;
+                changes.add(subject + "의 메모를 " + (oldMemo == null || oldMemo.isBlank() ? "(없음)" : oldMemo)
+                        + "에서 " + withEuroRo(newMemoText) + " 변경했어요.");
             }
         }
         if (oldCompartment != null && newCompartment != null && !Objects.equals(oldCompartment.getId(), newCompartment.getId())) {
-            changes.add("위치: " + oldCompartment.getName() + " → " + newCompartment.getName());
+            changes.add(subject + "의 위치를 " + oldCompartment.getName() + "에서 " + withEuroRo(newCompartment.getName()) + " 이동시켰어요.");
         }
 
-        return changes.isEmpty() ? null : String.join(", ", changes);
+        return changes.isEmpty() ? null : String.join("\n", changes);
+    }
+
+    // 한글 종성(받침) 유무에 따라 "을/를", "으로/로" 중 맞는 조사를 붙인다.
+    // 받침을 판단할 수 없는 문자(공백/괄호/따옴표 등)는 건너뛰고 그 앞의 실질 문자를 본다.
+    private boolean hasBatchim(String word) {
+        if (word == null) return false;
+        for (int i = word.length() - 1; i >= 0; i--) {
+            char c = word.charAt(i);
+            if (c >= 0xAC00 && c <= 0xD7A3) {
+                return (c - 0xAC00) % 28 != 0;
+            }
+            if (Character.isDigit(c)) {
+                return "013678".indexOf(c) >= 0; // 영/일/삼/육/칠/팔은 받침 있음, 이/사/오/구는 없음
+            }
+            if (Character.isLetter(c)) {
+                return false; // 영문 단위(kg, ml 등)는 받침 없는 것으로 간주
+            }
+        }
+        return false;
+    }
+
+    private String withEulReul(String word) {
+        return word + (hasBatchim(word) ? "을" : "를");
+    }
+
+    private String withEuroRo(String word) {
+        return word + (hasBatchim(word) ? "으로" : "로");
     }
 
     // memo 필드가 프론트엔드의 {category, subLocation, memo} JSON 형식인 경우에만 파싱해서 반환, 아니면 null
