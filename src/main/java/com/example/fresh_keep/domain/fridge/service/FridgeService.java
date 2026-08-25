@@ -102,9 +102,18 @@ public class FridgeService {
     @Cacheable(value = "fridges", key = "#p0")
     public List<FridgeResponse> getFridges(Long userId) {
         List<FridgeMember> members = fridgeMemberRepository.findByUserId(userId);
+
+        // 냉장고마다 findByFridgeId를 따로 부르던 N+1을 없애기 위해, 이 유저의 냉장고 전체 멤버를
+        // 한 번에 조회한 뒤 fridgeId 기준으로 메모리에서 묶는다.
+        List<Long> fridgeIds = members.stream()
+                .map(m -> m.getFridge().getId())
+                .collect(Collectors.toList());
+        Map<Long, List<FridgeMember>> membersByFridgeId = fridgeMemberRepository.findByFridgeIdIn(fridgeIds).stream()
+                .collect(Collectors.groupingBy(fm -> fm.getFridge().getId()));
+
         return members.stream()
                 .map(m -> {
-                    List<FridgeMember> fridgeMembers = fridgeMemberRepository.findByFridgeId(m.getFridge().getId());
+                    List<FridgeMember> fridgeMembers = membersByFridgeId.getOrDefault(m.getFridge().getId(), List.of());
                     String ownerName = fridgeMembers.stream()
                             .filter(fm -> fm.getRole() == MemberRole.OWNER)
                             .map(fm -> fm.getUser().getName())
