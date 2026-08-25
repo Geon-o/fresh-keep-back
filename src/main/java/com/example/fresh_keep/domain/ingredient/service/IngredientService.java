@@ -1,6 +1,7 @@
 package com.example.fresh_keep.domain.ingredient.service;
 
 import com.example.fresh_keep.domain.fridge.entity.Compartment;
+import com.example.fresh_keep.domain.fridge.entity.FridgeMember;
 import com.example.fresh_keep.domain.fridge.repository.CompartmentRepository;
 import com.example.fresh_keep.domain.fridge.repository.FridgeMemberRepository;
 import com.example.fresh_keep.domain.ingredient.dto.AddIngredientRequest;
@@ -15,6 +16,7 @@ import com.example.fresh_keep.domain.ingredient.repository.IngredientHistoryRepo
 import com.example.fresh_keep.domain.ingredient.repository.IngredientRepository;
 import com.example.fresh_keep.domain.user.entity.User;
 import com.example.fresh_keep.domain.user.repository.UserRepository;
+import com.example.fresh_keep.global.notification.PushNotificationService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -42,6 +44,7 @@ public class IngredientService {
     private final FridgeMemberRepository fridgeMemberRepository;
     private final UserRepository userRepository;
     private final CacheManager cacheManager;
+    private final PushNotificationService pushNotificationService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     // 프론트엔드 CompartmentDetail.tsx의 CATEGORIES와 동일한 매핑 (이력 요약을 한글로 보여주기 위함)
@@ -242,6 +245,37 @@ public class IngredientService {
                 .summary(summary)
                 .build();
         ingredientHistoryRepository.save(history);
+
+        notifyOtherMembers(fridgeId, actorUserId, actionType, summary);
+    }
+
+    // 식재료 등록/수정/삭제, 냉장고 이름/타입 변경 등 "기록 이력"에 남는 이벤트를 이 냉장고의
+    // 다른 멤버들(본인 제외)에게 푸시로 알린다. summary는 이미 자연어 문장이므로 그대로 재사용한다.
+    // 단, 위치 이동만 있었던 수정은 알림이 너무 잦아지므로 푸시에서는 제외한다 (기록 이력에는 그대로 남는다).
+    private void notifyOtherMembers(Long fridgeId, Long actorUserId, HistoryActionType actionType, String summary) {
+        if (summary == null) return;
+
+        String pushSummary = java.util.Arrays.stream(summary.split("\n"))
+                .filter(line -> !line.contains("위치를"))
+                .collect(Collectors.joining("\n"));
+        if (pushSummary.isBlank()) return;
+
+        List<FridgeMember> others = fridgeMemberRepository.findByFridgeId(fridgeId).stream()
+                .filter(m -> !m.getUser().getId().equals(actorUserId))
+                .collect(Collectors.toList());
+        if (others.isEmpty()) return;
+
+        String title = switch (actionType) {
+            case CREATED -> "식재료 등록";
+            case UPDATED -> "식재료 수정";
+            case DELETED -> "식재료 삭제";
+            case NAME_CHANGED -> "냉장고 이름 변경";
+            case TYPE_CHANGED -> "냉장고 타입 변경";
+        };
+        String actorName = resolveUserName(actorUserId);
+        String body = (actorName != null ? actorName + "님이 " : "") + pushSummary.replace("\n", " ");
+
+        others.forEach(m -> pushNotificationService.send(m.getUser().getExpoPushToken(), title, body));
     }
 
     // 바뀐 필드마다 자연스러운 한국어 문장을 하나씩 만들어 줄바꿈으로 모은다. 바뀐 게 없으면 null.

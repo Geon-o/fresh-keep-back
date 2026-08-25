@@ -23,4 +23,4 @@ USER spring:spring
 COPY --from=build --chown=spring:spring /app/app.jar app.jar
 
 EXPOSE 8080
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
