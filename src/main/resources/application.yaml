@@ -39,6 +39,8 @@ spring:
     properties:
       hibernate:
         format_sql: true
+        # LAZY 연관(User/Fridge 등) 프록시 초기화를 IN (...) 한 방으로 묶어 N+1을 없앤다.
+        default_batch_fetch_size: 100
   data:
     redis:
       host: ${REDIS_HOST:localhost}
@@ -49,7 +51,7 @@ spring:
 app:
   cors:
     allowed-origin-patterns:
-      - "http://localhost:[*]"
+      - "http://localhost:*"
       - "http://127.0.0.1:[*]"
       - "http://192.168.*.*:[*]"
 
@@ -72,6 +74,8 @@ spring:
     properties:
       hibernate:
         format_sql: false
+        # LAZY 연관(User/Fridge 등) 프록시 초기화를 IN (...) 한 방으로 묶어 N+1을 없앤다.
+        default_batch_fetch_size: 100
   data:
     redis:
       host: ${REDIS_HOST:localhost}
