@@ -114,6 +114,14 @@ public class FridgeService {
         Map<Long, List<FridgeMember>> membersByFridgeId = fridgeMemberRepository.findByFridgeIdIn(fridgeIds).stream()
                 .collect(Collectors.groupingBy(fm -> fm.getFridge().getId()));
 
+        // 냉장고마다 existsBy...를 부르던 N+1 대신, "남이 남긴 마지막 메모 시각"을 한 번에 집계해두고
+        // 아래에서 멤버별 기준시각(lastMemoViewedAt)과 메모리에서 비교한다.
+        Map<Long, LocalDateTime> lastOtherMemoByFridgeId = fridgeMemoRepository
+                .findLastOtherMemoCreatedAt(fridgeIds, userId).stream()
+                .collect(Collectors.toMap(
+                        FridgeMemoRepository.LastOtherMemo::getFridgeId,
+                        FridgeMemoRepository.LastOtherMemo::getLastCreatedAt));
+
         return members.stream()
                 .map(m -> {
                     List<FridgeMember> fridgeMembers = membersByFridgeId.getOrDefault(m.getFridge().getId(), List.of());
@@ -130,8 +138,8 @@ public class FridgeService {
                     // LocalDateTime.MIN(-999999999년)은 MySQL DATETIME 표현 범위(1000~9999년)를 벗어나
                     // "Incorrect DATETIME value" 에러를 내므로, 그 범위 안의 충분히 오래된 값을 대신 쓴다.
                     LocalDateTime since = m.getLastMemoViewedAt() != null ? m.getLastMemoViewedAt() : LocalDateTime.of(1970, 1, 1, 0, 0);
-                    boolean hasUnreadMemo = fridgeMemoRepository
-                            .existsByFridgeIdAndAuthorUserIdNotAndCreatedAtAfter(m.getFridge().getId(), userId, since);
+                    LocalDateTime lastOtherMemo = lastOtherMemoByFridgeId.get(m.getFridge().getId());
+                    boolean hasUnreadMemo = lastOtherMemo != null && lastOtherMemo.isAfter(since);
 
                     return FridgeResponse.builder()
                             .id(m.getFridge().getId())

@@ -38,8 +38,18 @@ public class MemoService {
 
     public List<MemoResponse> list(Long fridgeId, Long userId) {
         requireMember(fridgeId, userId);
-        return fridgeMemoRepository.findByFridgeIdOrderByCreatedAtDesc(fridgeId).stream()
-                .map(memo -> toResponse(memo, userId))
+        List<FridgeMemo> memos = fridgeMemoRepository.findByFridgeIdOrderByCreatedAtDesc(fridgeId);
+
+        // 메모마다 작성자를 findById 하던 N+1을 없애기 위해, 작성자 이름을 한 번에 배치 조회한다.
+        List<Long> authorIds = memos.stream()
+                .map(FridgeMemo::getAuthorUserId)
+                .distinct()
+                .collect(Collectors.toList());
+        Map<Long, String> authorNames = userRepository.findAllById(authorIds).stream()
+                .collect(Collectors.toMap(User::getId, User::getName));
+
+        return memos.stream()
+                .map(memo -> toResponse(memo, userId, authorNames.get(memo.getAuthorUserId())))
                 .collect(Collectors.toList());
     }
 
@@ -171,8 +181,13 @@ public class MemoService {
                 .forEach(m -> cache.evict(m.getUser().getId()));
     }
 
+    // 단건 경로(create/update/toggle)용: 작성자 이름을 즉시 조회한다.
     private MemoResponse toResponse(FridgeMemo memo, Long viewerUserId) {
         String authorName = userRepository.findById(memo.getAuthorUserId()).map(User::getName).orElse(null);
+        return toResponse(memo, viewerUserId, authorName);
+    }
+
+    private MemoResponse toResponse(FridgeMemo memo, Long viewerUserId, String authorName) {
         return MemoResponse.builder()
                 .id(memo.getId())
                 .fridgeId(memo.getFridgeId())
