@@ -70,7 +70,9 @@ public class JwtProvider {
                     .parseSignedClaims(token);
             return true;
         } catch (ExpiredJwtException e) {
-            log.error("Expired JWT token.");
+            // 액세스 토큰이 자연 만료되어 프론트가 /api/auth/refresh로 재발급받는
+            // 정상 흐름의 일부라 장애처럼 보이지 않도록 error가 아닌 debug로 남긴다.
+            log.debug("Expired JWT token.");
         } catch (UnsupportedJwtException e) {
             log.error("Unsupported JWT token.");
         } catch (MalformedJwtException e) {
