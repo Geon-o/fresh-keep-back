@@ -24,6 +24,7 @@ import com.example.fresh_keep.domain.ingredient.entity.Ingredient;
 import com.example.fresh_keep.domain.ingredient.enums.ExpirationType;
 import com.example.fresh_keep.domain.ingredient.repository.IngredientRepository;
 import com.example.fresh_keep.domain.ingredient.service.IngredientService;
+import com.example.fresh_keep.domain.memo.repository.FridgeMemoRepository;
 import com.example.fresh_keep.global.notification.PushNotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.Cache;
@@ -35,6 +36,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -53,6 +55,7 @@ public class FridgeService {
     private final UserRepository userRepository;
     private final IngredientRepository ingredientRepository;
     private final IngredientService ingredientService;
+    private final FridgeMemoRepository fridgeMemoRepository;
     private final CacheManager cacheManager;
     private final PushNotificationService pushNotificationService;
 
@@ -124,6 +127,12 @@ public class FridgeService {
                             .sorted((a, b) -> a.getRole() == MemberRole.OWNER ? -1 : b.getRole() == MemberRole.OWNER ? 1 : 0)
                             .map(fm -> fm.getUser().getName())
                             .collect(Collectors.toList());
+                    // LocalDateTime.MIN(-999999999년)은 MySQL DATETIME 표현 범위(1000~9999년)를 벗어나
+                    // "Incorrect DATETIME value" 에러를 내므로, 그 범위 안의 충분히 오래된 값을 대신 쓴다.
+                    LocalDateTime since = m.getLastMemoViewedAt() != null ? m.getLastMemoViewedAt() : LocalDateTime.of(1970, 1, 1, 0, 0);
+                    boolean hasUnreadMemo = fridgeMemoRepository
+                            .existsByFridgeIdAndAuthorUserIdNotAndCreatedAtAfter(m.getFridge().getId(), userId, since);
+
                     return FridgeResponse.builder()
                             .id(m.getFridge().getId())
                             .name(m.getFridge().getName())
@@ -133,6 +142,7 @@ public class FridgeService {
                             .deletionRequested(m.getFridge().isDeletionRequested())
                             .ownerName(ownerName)
                             .memberNames(memberNames)
+                            .hasUnreadMemo(hasUnreadMemo)
                             .build();
                 })
                 .collect(Collectors.toList());

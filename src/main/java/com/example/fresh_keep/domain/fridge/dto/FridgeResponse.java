@@ -25,4 +25,6 @@ public class FridgeResponse {
     private List<String> memberNames;
     // QR 공유 응답 전용: 이미 멤버였던 냉장고를 다시 스캔한 경우 true.
     private boolean alreadyMember;
+    // 내가 아직 안 읽은(마지막으로 메모함을 연 뒤 남이 작성한) 메모가 있는지 — 메모 버튼 빨간 점용.
+    private boolean hasUnreadMemo;
 }

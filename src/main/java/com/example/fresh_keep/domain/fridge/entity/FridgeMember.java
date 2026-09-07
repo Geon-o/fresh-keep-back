@@ -38,6 +38,9 @@ public class FridgeMember {
 
     private LocalDateTime createdAt;
 
+    // 메모 안읽음 배지 판정 기준 시각. null이면 "한 번도 메모 목록을 연 적 없음"으로 취급한다.
+    private LocalDateTime lastMemoViewedAt;
+
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
@@ -49,5 +52,9 @@ public class FridgeMember {
 
     public void resetDeletionApproval() {
         this.deletionApproved = false;
+    }
+
+    public void markMemoViewed() {
+        this.lastMemoViewedAt = LocalDateTime.now();
     }
 }
