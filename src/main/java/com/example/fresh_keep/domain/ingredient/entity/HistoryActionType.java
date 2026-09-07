@@ -5,5 +5,6 @@ public enum HistoryActionType {
     UPDATED,
     DELETED,
     NAME_CHANGED,
-    TYPE_CHANGED
+    TYPE_CHANGED,
+    NICKNAME_CHANGED
 }

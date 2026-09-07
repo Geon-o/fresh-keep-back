@@ -271,6 +271,7 @@ public class IngredientService {
             case DELETED -> "식재료 삭제";
             case NAME_CHANGED -> "냉장고 이름 변경";
             case TYPE_CHANGED -> "냉장고 타입 변경";
+            case NICKNAME_CHANGED -> "닉네임 변경";
         };
         String actorName = resolveUserName(actorUserId);
         String body = (actorName != null ? actorName + "님이 " : "") + pushSummary.replace("\n", " ");

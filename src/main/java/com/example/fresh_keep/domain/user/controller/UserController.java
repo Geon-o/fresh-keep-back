@@ -9,10 +9,14 @@ import com.example.fresh_keep.domain.fridge.enums.MemberRole;
 import com.example.fresh_keep.domain.fridge.repository.CompartmentRepository;
 import com.example.fresh_keep.domain.fridge.repository.FridgeMemberRepository;
 import com.example.fresh_keep.domain.fridge.repository.FridgeRepository;
+import com.example.fresh_keep.domain.ingredient.entity.HistoryActionType;
 import com.example.fresh_keep.domain.ingredient.entity.Ingredient;
 import com.example.fresh_keep.domain.ingredient.repository.IngredientRepository;
+import com.example.fresh_keep.domain.ingredient.service.IngredientService;
 import lombok.RequiredArgsConstructor;
 import lombok.Data;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,6 +35,8 @@ public class UserController {
     private final FridgeRepository fridgeRepository;
     private final CompartmentRepository compartmentRepository;
     private final IngredientRepository ingredientRepository;
+    private final IngredientService ingredientService;
+    private final CacheManager cacheManager;
 
     @GetMapping("/me")
     public ResponseEntity<UserProfileResponse> me(@AuthenticationPrincipal Object principal) {
@@ -76,8 +82,14 @@ public class UserController {
 
         return userRepository.findById(userId)
                 .map(user -> {
+                    String oldName = user.getName();
                     user.updateName(name);
                     User savedUser = userRepository.save(user);
+
+                    if (!name.equals(oldName)) {
+                        onNicknameChanged(userId, oldName, name);
+                    }
+
                     return ResponseEntity.ok(UserProfileResponse.builder()
                             .id(savedUser.getId())
                             .email(savedUser.getEmail())
@@ -86,6 +98,40 @@ public class UserController {
                             .build());
                 })
                 .orElse(ResponseEntity.notFound().build());
+    }
+
+    // 닉네임이 공유 냉장고에 노출되는 두 군데(멤버 목록 캐시, 기록 이력)를 갱신한다.
+    // "fridges"/"fridgeLayout" 캐시는 조회자 관점으로 키가 잡혀 있어, 이 유저가 속한 냉장고를
+    // 함께 쓰는 모든 멤버(본인 포함)의 캐시를 지워야 다음 조회 때 새 닉네임이 반영된다.
+    private void onNicknameChanged(Long userId, String oldName, String newName) {
+        List<FridgeMember> myMemberships = fridgeMemberRepository.findByUserId(userId);
+        if (myMemberships.isEmpty()) {
+            return;
+        }
+
+        List<Long> fridgeIds = myMemberships.stream()
+                .map(m -> m.getFridge().getId())
+                .distinct()
+                .toList();
+
+        List<Long> affectedUserIds = fridgeMemberRepository.findByFridgeIdIn(fridgeIds).stream()
+                .map(m -> m.getUser().getId())
+                .distinct()
+                .toList();
+
+        Cache fridgesCache = cacheManager.getCache("fridges");
+        if (fridgesCache != null) {
+            affectedUserIds.forEach(fridgesCache::evict);
+        }
+        Cache fridgeLayoutCache = cacheManager.getCache("fridgeLayout");
+        if (fridgeLayoutCache != null) {
+            fridgeIds.forEach(fridgeLayoutCache::evict);
+        }
+
+        for (FridgeMember membership : myMemberships) {
+            ingredientService.saveHistory(membership.getFridge().getId(), membership.getFridge().getName(),
+                    HistoryActionType.NICKNAME_CHANGED, userId, oldName + "에서 " + newName + "으로 변경했습니다.");
+        }
     }
 
     @Transactional
