@@ -276,7 +276,13 @@ public class IngredientService {
         String actorName = resolveUserName(actorUserId);
         String body = (actorName != null ? actorName + "님이 " : "") + pushSummary.replace("\n", " ");
 
-        others.forEach(m -> pushNotificationService.send(m.getUser().getExpoPushToken(), title, body));
+        // 닉네임 변경은 프론트가 포그라운드 수신 시 data.type을 보고 fridges 쿼리를
+        // 즉시 재요청하도록 되어 있다(_layout.tsx). 그 트리거를 위한 부가 정보.
+        Map<String, Object> data = actionType == HistoryActionType.NICKNAME_CHANGED
+                ? Map.of("type", "nickname_changed")
+                : null;
+
+        others.forEach(m -> pushNotificationService.send(m.getUser().getExpoPushToken(), title, body, data));
     }
 
     // 바뀐 필드마다 자연스러운 한국어 문장을 하나씩 만들어 줄바꿈으로 모은다. 바뀐 게 없으면 null.
