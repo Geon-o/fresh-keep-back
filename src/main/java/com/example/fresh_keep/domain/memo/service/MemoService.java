@@ -55,7 +55,7 @@ public class MemoService {
                 .build();
         fridgeMemoRepository.save(memo);
 
-        notifyOtherMembers(fridgeId, userId, request.getType(), request.getContent());
+        notifyOtherMembers(fridgeId, userId);
         evictFridgesCacheForMembers(fridgeId);
 
         return toResponse(memo, userId);
@@ -146,41 +146,20 @@ public class MemoService {
         }
     }
 
-    // 새 메모를 다른 멤버들(본인 제외)에게 푸시로 알린다. IngredientService.notifyOtherMembers와 같은 패턴.
-    private void notifyOtherMembers(Long fridgeId, Long actorUserId, MemoType type, String content) {
+    // 새 메모를 다른 멤버들(본인 제외)에게 푸시로 알린다. 내용은 굳이 보여줄 필요 없어서
+    // 누가 남겼는지만 알린다. IngredientService.notifyOtherMembers와 같은 패턴.
+    private void notifyOtherMembers(Long fridgeId, Long actorUserId) {
         List<FridgeMember> others = fridgeMemberRepository.findByFridgeId(fridgeId).stream()
                 .filter(m -> !m.getUser().getId().equals(actorUserId))
                 .collect(Collectors.toList());
         if (others.isEmpty()) return;
 
         String actorName = userRepository.findById(actorUserId).map(User::getName).orElse(null);
-        String snippet = buildSnippet(type, content);
         String title = "새 메모";
-        String body = (actorName != null ? actorName + "님이 " : "") + "메모를 남겼어요: " + snippet;
+        String body = (actorName != null ? actorName : "누군가") + "님이 메모를 남겼어요.";
         Map<String, Object> data = Map.of("type", "memo_created");
 
         others.forEach(m -> pushNotificationService.send(m.getUser().getExpoPushToken(), title, body, data));
-    }
-
-    // 푸시 본문에 넣을 짧은 미리보기. CHECKLIST는 content가 JSON이라 그대로 자르면 안 되고
-    // 파싱해서 사람이 읽을 문구로 바꿔야 한다 (getMemoPreview 프론트 로직과 같은 방식).
-    private String buildSnippet(MemoType type, String content) {
-        if (type == MemoType.CHECKLIST) {
-            List<ChecklistItemDto> items = parseChecklistQuietly(content);
-            if (items.isEmpty()) return "체크리스트";
-            String rest = items.size() > 1 ? " 외 " + (items.size() - 1) + "개" : "";
-            return items.get(0).getText() + rest;
-        }
-        String singleLine = content.replace("\n", " ");
-        return singleLine.length() > 30 ? singleLine.substring(0, 30) + "..." : singleLine;
-    }
-
-    private List<ChecklistItemDto> parseChecklistQuietly(String content) {
-        try {
-            return objectMapper.readValue(content, new TypeReference<List<ChecklistItemDto>>() {});
-        } catch (Exception e) {
-            return List.of();
-        }
     }
 
     // 안읽음 배지가 fridges 응답(getFridges)에 실려 캐시되므로, 새 메모가 생기면 그 냉장고
