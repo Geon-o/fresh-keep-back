@@ -276,11 +276,14 @@ public class IngredientService {
         String actorName = resolveUserName(actorUserId);
         String body = (actorName != null ? actorName + "님이 " : "") + pushSummary.replace("\n", " ");
 
-        // 닉네임 변경은 프론트가 포그라운드 수신 시 data.type을 보고 fridges 쿼리를
-        // 즉시 재요청하도록 되어 있다(_layout.tsx). 그 트리거를 위한 부가 정보.
-        Map<String, Object> data = actionType == HistoryActionType.NICKNAME_CHANGED
-                ? Map.of("type", "nickname_changed")
-                : null;
+        // 프론트가 포그라운드 수신 시 data.type을 보고 어떤 화면을 다시 불러올지 정한다(_layout.tsx).
+        // 닉네임 변경은 fridges 쿼리(react-query) 무효화, 식재료 CRUD는 각 화면이 들고 있는
+        // 냉장고 레이아웃(react-query 밖의 로컬 상태)을 다시 불러오게 하는 이벤트로 알린다.
+        Map<String, Object> data = switch (actionType) {
+            case NICKNAME_CHANGED -> Map.of("type", "nickname_changed");
+            case CREATED, UPDATED, DELETED -> Map.of("type", "ingredient_changed");
+            default -> null;
+        };
 
         others.forEach(m -> pushNotificationService.send(m.getUser().getExpoPushToken(), title, body, data));
     }
