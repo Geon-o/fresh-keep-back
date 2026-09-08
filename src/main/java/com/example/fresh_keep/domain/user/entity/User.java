@@ -55,6 +55,12 @@ public class User {
         this.expoPushToken = expoPushToken;
     }
 
+    // 익명 계정을 소셜 계정으로 승격/연결한다. (이메일 등 PII는 저장하지 않고 provider+providerId만 보관)
+    public void linkSocial(String provider, String providerId) {
+        this.provider = provider;
+        this.providerId = providerId;
+    }
+
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
