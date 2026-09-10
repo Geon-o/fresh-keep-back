@@ -8,12 +8,17 @@ spring:
 
 jwt:
   secret: ${JWT_SECRET}
-  access-token-expiration: 900000
-  refresh-token-expiration: 604800000
+  access-token-expiration: 3600000      # 1시간
+  refresh-token-expiration: 1296000000  # 15일 (회전으로 슬라이딩 만료)
 
 security:
   # 연동 코드/기기 UUID HMAC 해싱용 서버 비밀키. 절대 커밋하지 말고 환경변수로 주입.
   hmac-secret: ${HMAC_SECRET}
+
+oauth:
+  google:
+    # 앱이 idToken을 받을 때 audience로 쓴 웹 클라이언트 ID. 위조 토큰 차단용 검증에 사용.
+    web-client-id: ${GOOGLE_WEB_CLIENT_ID:}
 
 
 

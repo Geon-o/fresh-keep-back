@@ -57,4 +57,9 @@ public class FridgeMember {
     public void markMemoViewed() {
         this.lastMemoViewedAt = LocalDateTime.now();
     }
+
+    // 소셜 로그인 시 게스트(익명) 데이터를 기존 계정으로 합칠 때, 이 멤버십의 소유 사용자를 옮긴다.
+    public void transferTo(User newUser) {
+        this.user = newUser;
+    }
 }
