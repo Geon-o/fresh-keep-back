@@ -33,6 +33,11 @@ public class RefreshTokenSessionService {
         redisTemplate.opsForValue().set(redisKey, value, refreshTokenExpiration, TimeUnit.MILLISECONDS);
     }
 
+    // 회원탈퇴 등에서 해당 유저의 refresh 세션(IP·UA 포함)을 즉시 제거해 잔여 데이터를 남기지 않는다.
+    public void revoke(Long userId) {
+        redisTemplate.delete("RT:" + userId);
+    }
+
     public String resolveClientIp(HttpServletRequest request) {
         String ip = request.getHeader("X-Forwarded-For");
         if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {

@@ -37,6 +37,7 @@ public class UserController {
     private final IngredientRepository ingredientRepository;
     private final IngredientService ingredientService;
     private final CacheManager cacheManager;
+    private final com.example.fresh_keep.global.security.jwt.RefreshTokenSessionService refreshTokenSessionService;
 
     @GetMapping("/me")
     public ResponseEntity<UserProfileResponse> me(@AuthenticationPrincipal Object principal) {
@@ -165,9 +166,18 @@ public class UserController {
         // 1. 해당 유저가 속한 모든 냉장고 관계 조회
         List<FridgeMember> members = fridgeMemberRepository.findByUserId(userId);
 
+        // 소유 냉장고가 통째로 삭제되면 공유받던 다른 멤버 화면에서도 즉시 사라져야 하므로,
+        // 삭제 전에 영향받는 냉장고/공유자 목록을 모아 두었다가 아래에서 캐시를 무효화한다.
+        List<Long> deletedFridgeIds = new java.util.ArrayList<>();
+        java.util.Set<Long> affectedMemberUserIds = new java.util.HashSet<>();
+
         for (FridgeMember member : members) {
             Fridge fridge = member.getFridge();
             if (member.getRole() == MemberRole.OWNER) {
+                List<FridgeMember> fridgeMembers = fridgeMemberRepository.findByFridgeId(fridge.getId());
+                fridgeMembers.forEach(m -> affectedMemberUserIds.add(m.getUser().getId()));
+                deletedFridgeIds.add(fridge.getId());
+
                 // 2. 소유주인 경우 냉장고와 연관 데이터 완전 삭제
                 List<Ingredient> ingredients = ingredientRepository.findByFridgeId(fridge.getId());
                 ingredientRepository.deleteAll(ingredients);
@@ -175,7 +185,6 @@ public class UserController {
                 List<Compartment> compartments = compartmentRepository.findByFridgeIdOrderBySequenceOrderAsc(fridge.getId());
                 compartmentRepository.deleteAll(compartments);
 
-                List<FridgeMember> fridgeMembers = fridgeMemberRepository.findByFridgeId(fridge.getId());
                 fridgeMemberRepository.deleteAll(fridgeMembers);
 
                 fridgeRepository.delete(fridge);
@@ -185,8 +194,21 @@ public class UserController {
             }
         }
 
-        // 4. 유저 삭제
+        // 4. 유저 삭제 (provider·providerId·deviceUuid 등 소셜 연동 정보는 users 컬럼이라 함께 제거됨)
         userRepository.delete(user);
+
+        // 5. Redis refresh 세션(IP·UA 포함) 제거 — 처리방침상 탈퇴 시 잔여 데이터를 남기지 않는다.
+        refreshTokenSessionService.revoke(userId);
+
+        // 6. 삭제된 냉장고를 보고 있던 공유자들의 목록/레이아웃 캐시를 비워 유령 냉장고가 남지 않게 한다.
+        Cache fridgesCache = cacheManager.getCache("fridges");
+        if (fridgesCache != null) {
+            affectedMemberUserIds.forEach(fridgesCache::evict);
+        }
+        Cache fridgeLayoutCache = cacheManager.getCache("fridgeLayout");
+        if (fridgeLayoutCache != null) {
+            deletedFridgeIds.forEach(fridgeLayoutCache::evict);
+        }
 
         return ResponseEntity.noContent().build();
     }
