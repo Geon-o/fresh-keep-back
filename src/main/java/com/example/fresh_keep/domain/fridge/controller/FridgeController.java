@@ -166,6 +166,32 @@ public class FridgeController {
         return ResponseEntity.ok().build();
     }
 
+    @PostMapping("/{fridgeId}/pantry")
+    public ResponseEntity<Void> enablePantry(
+            @PathVariable("fridgeId") Long fridgeId,
+            @AuthenticationPrincipal Object principal) {
+
+        if (!(principal instanceof Long userId)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        fridgeService.enablePantry(fridgeId, userId);
+        return ResponseEntity.ok().build();
+    }
+
+    @DeleteMapping("/{fridgeId}/pantry")
+    public ResponseEntity<Void> disablePantry(
+            @PathVariable("fridgeId") Long fridgeId,
+            @AuthenticationPrincipal Object principal) {
+
+        if (!(principal instanceof Long userId)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        fridgeService.disablePantry(fridgeId, userId);
+        return ResponseEntity.ok().build();
+    }
+
     @PostMapping("/share")
     public ResponseEntity<?> shareFridge(
             @RequestBody ShareFridgeRequest request,

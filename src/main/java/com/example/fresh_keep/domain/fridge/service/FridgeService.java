@@ -483,6 +483,74 @@ public class FridgeService {
         compartment.updateShelves(request.getInsideShelves(), request.getDoorShelves(), request.getHasDoorStorage());
     }
 
+    /**
+     * 실온 보관함(팬트리) 사용 켜기 — 냉장고에 ROOM_TEMP 구획 1개를 만든다.
+     * 구획 존재 여부 자체가 "팬트리 사용 중" 상태이므로 별도 플래그는 두지 않는다.
+     * 구조를 바꾸는 파괴적 작업이라 냉장고 주인만 할 수 있다.
+     */
+    @Transactional
+    @CacheEvict(value = "fridgeLayout", key = "#p0")
+    public void enablePantry(Long fridgeId, Long userId) {
+        FridgeMember requester = fridgeMemberRepository.findByFridgeIdAndUserId(fridgeId, userId)
+                .orElseThrow(() -> new IllegalArgumentException("해당 냉장고에 대한 수정 권한이 없습니다."));
+        if (requester.getRole() != MemberRole.OWNER) {
+            throw new IllegalArgumentException("실온 보관함 설정은 주인만 변경할 수 있습니다.");
+        }
+        Fridge fridge = fridgeRepository.findById(fridgeId)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 냉장고입니다."));
+
+        List<Compartment> compartments = compartmentRepository.findByFridgeIdOrderBySequenceOrderAsc(fridgeId);
+        // 이미 실온 구획이 있으면 멱등 처리 (중복 생성 금지)
+        boolean alreadyExists = compartments.stream()
+                .anyMatch(comp -> comp.getStorageType() == StorageType.ROOM_TEMP);
+        if (alreadyExists) {
+            return;
+        }
+
+        int nextOrder = compartments.stream()
+                .mapToInt(Compartment::getSequenceOrder)
+                .max()
+                .orElse(0) + 1;
+
+        Compartment pantry = Compartment.builder()
+                .fridge(fridge)
+                .name("실온 보관함")
+                .storageType(StorageType.ROOM_TEMP)
+                .sequenceOrder(nextOrder)
+                .insideShelves("[{\"id\":\"shelf_1\",\"label\":\"칸 1\"}]")
+                .doorShelves("[]")
+                .hasDoorStorage(false)
+                .build();
+        compartmentRepository.save(pantry);
+    }
+
+    /**
+     * 실온 보관함(팬트리) 사용 끄기 — ROOM_TEMP 구획을 삭제한다.
+     * 안에 식재료가 남아있으면 실수로 날리는 사고를 막기 위해 삭제를 거부한다(먼저 비우게 유도).
+     */
+    @Transactional
+    @CacheEvict(value = "fridgeLayout", key = "#p0")
+    public void disablePantry(Long fridgeId, Long userId) {
+        FridgeMember requester = fridgeMemberRepository.findByFridgeIdAndUserId(fridgeId, userId)
+                .orElseThrow(() -> new IllegalArgumentException("해당 냉장고에 대한 수정 권한이 없습니다."));
+        if (requester.getRole() != MemberRole.OWNER) {
+            throw new IllegalArgumentException("실온 보관함 설정은 주인만 변경할 수 있습니다.");
+        }
+
+        Compartment pantry = compartmentRepository.findByFridgeIdOrderBySequenceOrderAsc(fridgeId).stream()
+                .filter(comp -> comp.getStorageType() == StorageType.ROOM_TEMP)
+                .findFirst()
+                .orElse(null);
+        if (pantry == null) {
+            return; // 이미 없으면 멱등 처리
+        }
+
+        if (ingredientRepository.existsByCompartmentId(pantry.getId())) {
+            throw new IllegalArgumentException("실온 보관함을 비운 뒤 다시 시도해주세요.");
+        }
+        compartmentRepository.delete(pantry);
+    }
+
     private void createDefaultCompartments(Fridge fridge) {
         List<Compartment> compartments = new ArrayList<>();
         if (fridge.getType() == FridgeType.FOUR_DOOR) {

@@ -9,4 +9,6 @@ import java.util.List;
 @Repository
 public interface IngredientRepository extends JpaRepository<Ingredient, Long> {
     List<Ingredient> findByFridgeId(Long fridgeId);
+
+    boolean existsByCompartmentId(Long compartmentId);
 }
