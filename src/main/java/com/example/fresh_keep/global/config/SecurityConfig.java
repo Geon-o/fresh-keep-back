@@ -72,8 +72,8 @@ public class SecurityConfig {
         configuration.setAllowedOriginPatterns(allowedOriginPatterns);
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(Collections.singletonList("*"));
-        configuration.setExposedHeaders(Arrays.asList("Set-Cookie", "Authorization"));
-        configuration.setAllowCredentials(true);
+        // 쿠키 인증을 쓰지 않으므로 credentials 불필요. 네이티브 앱은 Origin을 안 보내 CORS 대상이 아니다(Expo 웹/개발용).
+        configuration.setExposedHeaders(Collections.singletonList("Authorization"));
         configuration.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
