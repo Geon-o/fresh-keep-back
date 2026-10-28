@@ -5,7 +5,6 @@ import com.example.fresh_keep.global.security.jwt.JwtProvider;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
-import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -35,7 +34,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
 
         try {
-            // 1. Resolve Access Token (From Header OR Cookie)
+            // 1. Resolve Access Token (Authorization header only — 앱은 쿠키를 쓰지 않는다)
             String token = resolveToken(request);
 
             if (token != null && jwtProvider.validateToken(token)) {
@@ -73,16 +72,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (StringUtils.hasText(bearerToken) && bearerToken.startsWith("Bearer ")) {
             return bearerToken.substring(7);
         }
-
-        // Second try Cookies: accessToken=<token>
-        if (request.getCookies() != null) {
-            for (Cookie cookie : request.getCookies()) {
-                if ("accessToken".equals(cookie.getName())) {
-                    return cookie.getValue();
-                }
-            }
-        }
-
         return null;
     }
 

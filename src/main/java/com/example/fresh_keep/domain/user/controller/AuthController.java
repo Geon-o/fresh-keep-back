@@ -6,9 +6,7 @@ import com.example.fresh_keep.domain.user.repository.UserRepository;
 import com.example.fresh_keep.global.security.jwt.JwtProvider;
 import com.example.fresh_keep.global.security.jwt.RefreshTokenSessionService;
 import com.example.fresh_keep.global.security.jwt.dto.TokenResponse;
-import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -35,8 +33,7 @@ public class AuthController {
     @PostMapping("/refresh")
     public ResponseEntity<?> refresh(
             @RequestBody(required = false) RefreshRequest refreshRequest,
-            HttpServletRequest request,
-            HttpServletResponse response) {
+            HttpServletRequest request) {
 
         String incomingRefreshToken = null;
         if (refreshRequest != null && refreshRequest.getRefreshToken() != null) {
@@ -59,23 +56,14 @@ public class AuthController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Refresh Token session not found in server.");
         }
 
-        String[] parts = storedValue.split("\\|", 3);
-        String storedToken = parts[0];
-        String storedUserAgent = parts.length > 2 ? parts[2] : "";
+        String storedToken = storedValue.split("\\|", 2)[0];
 
         // Replay attack check
+        // 앱 UA는 앱/OS 업데이트마다 바뀌므로 UA 일치 검사는 하지 않는다. 탈취 방어는 RTR 재사용 감지로 충분.
         if (!incomingRefreshToken.equals(storedToken)) {
             redisTemplate.delete(redisKey);
             log.error("Replay attack detected for User: {}! Revoking all sessions.", userId);
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Security alert: Session replayed and revoked.");
-        }
-
-        // Client context verification
-        String userAgent = request.getHeader("User-Agent");
-
-        if (!storedUserAgent.equals(userAgent != null ? userAgent : "UNKNOWN")) {
-            log.warn("User-Agent mismatch detected for User: {}. Expected: {}, Actual: {}", userId, storedUserAgent, userAgent);
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Session context changed.");
         }
 
         User user = userRepository.findById(userId).orElse(null);
@@ -90,9 +78,6 @@ public class AuthController {
         // Save new Refresh Token (RTR)
         refreshTokenSessionService.save(userId, newRefreshToken, request);
 
-        // Update cookie
-        setAccessTokenCookie(response, newAccessToken);
-
         return ResponseEntity.ok(TokenResponse.builder()
                 .accessToken(newAccessToken)
                 .refreshToken(newRefreshToken)
@@ -100,7 +85,7 @@ public class AuthController {
     }
 
     @PostMapping("/logout")
-    public ResponseEntity<?> logout(HttpServletRequest request, HttpServletResponse response) {
+    public ResponseEntity<?> logout(HttpServletRequest request) {
         String token = resolveToken(request);
         if (token != null && jwtProvider.validateToken(token)) {
             Long userId = jwtProvider.getUserId(token);
@@ -115,13 +100,6 @@ public class AuthController {
             }
         }
 
-        Cookie cookie = new Cookie("accessToken", null);
-        cookie.setHttpOnly(true);
-        cookie.setSecure(true);
-        cookie.setPath("/");
-        cookie.setMaxAge(0);
-        response.addCookie(cookie);
-
         return ResponseEntity.noContent().build();
     }
 
@@ -130,24 +108,6 @@ public class AuthController {
         if (bearerToken != null && bearerToken.startsWith("Bearer ")) {
             return bearerToken.substring(7);
         }
-        if (request.getCookies() != null) {
-            for (Cookie cookie : request.getCookies()) {
-                if ("accessToken".equals(cookie.getName())) {
-                    return cookie.getValue();
-                }
-            }
-        }
         return null;
-    }
-
-    private void setAccessTokenCookie(HttpServletResponse response, String accessToken) {
-        Cookie cookie = new Cookie("accessToken", accessToken);
-        cookie.setHttpOnly(true);
-        cookie.setSecure(true);
-        cookie.setPath("/");
-        cookie.setMaxAge((int) (jwtProvider.getClaims(accessToken).getExpiration().getTime() - System.currentTimeMillis()) / 1000);
-        response.addCookie(cookie);
-        response.addHeader("Set-Cookie", String.format("accessToken=%s; Max-Age=%d; Path=/; Secure; HttpOnly; SameSite=Strict",
-                accessToken, cookie.getMaxAge()));
     }
 }
